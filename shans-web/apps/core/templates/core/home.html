@@ -1,0 +1,13 @@
+{% extends "core/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Home" %}{% endblock %}
+{% block content %}
+  <h1>{% trans "Welcome to Shans Web" %}</h1>
+  <p>{% trans "Search and analyze instruments, compare, and build portfolios." %}</p>
+  <ul>
+    <li><a href="/info/AAPL">{% trans "Example: Info AAPL" %}</a></li>
+    <li><a href="/compare/AAPL,MSFT">{% trans "Example: Compare AAPL vs MSFT" %}</a></li>
+    <li><a href="/portfolio">{% trans "Analyze a portfolio" %}</a></li>
+  </ul>
+{% endblock %}
+

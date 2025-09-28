@@ -1,0 +1,9 @@
+{% extends "core/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Dashboard" %}{% endblock %}
+{% block content %}
+  <h1>{% trans "Dashboard" %}</h1>
+  <p>{% trans "Plan" %}: {{ profile.status|title }}</p>
+  <p><a href="/account/profile">{% trans "Edit profile" %}</a></p>
+{% endblock %}
+

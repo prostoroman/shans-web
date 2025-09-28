@@ -1,0 +1,21 @@
+{% extends "core/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "History" %}{% endblock %}
+{% block content %}
+  <h1>{% trans "Viewing history" %}</h1>
+  <ul>
+    {% for e in page.object_list %}
+      <li>{{ e.viewed_at }} — {{ e.symbol }}</li>
+    {% empty %}
+      <li>{% trans "No views yet." %}</li>
+    {% endfor %}
+  </ul>
+  {% if page.has_other_pages %}
+  <nav>
+    {% if page.has_previous %}<a href="?page={{ page.previous_page_number }}">{% trans "Prev" %}</a>{% endif %}
+    <span>{{ page.number }}/{{ page.paginator.num_pages }}</span>
+    {% if page.has_next %}<a href="?page={{ page.next_page_number }}">{% trans "Next" %}</a>{% endif %}
+  </nav>
+  {% endif %}
+{% endblock %}
+
