@@ -1,12 +1,140 @@
-{% extends "core/base.html" %}
+{% extends "base.html" %}
 {% load i18n %}
-{% block title %}{% trans "Profile" %}{% endblock %}
-{% block content %}
-  <h1>{% trans "Profile" %}</h1>
-  <form method="post">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit">{% trans "Save" %}</button>
-  </form>
-{% endblock %}
 
+{% block title %}{% trans "Profile" %} - Shan's Web{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 mx-auto">
+        <h1 class="mb-4">{% trans "Profile Settings" %}</h1>
+        
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-user me-2"></i>{% trans "Account Information" %}
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">{% trans "Email" %}</label>
+                            <input type="email" class="form-control" value="{{ user.email }}" readonly>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">{% trans "Plan Status" %}</label>
+                            <input type="text" class="form-control" value="{{ profile.status|upper }}" readonly>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">{% trans "Member Since" %}</label>
+                            <input type="text" class="form-control" value="{{ profile.created_at|date:"F j, Y" }}" readonly>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">{% trans "Last Updated" %}</label>
+                            <input type="text" class="form-control" value="{{ profile.updated_at|date:"F j, Y" }}" readonly>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="locale" class="form-label">{% trans "Language" %}</label>
+                        <select class="form-select" id="locale" name="locale">
+                            <option value="en" {% if profile.locale == 'en' %}selected{% endif %}>English</option>
+                            <option value="ru" {% if profile.locale == 'ru' %}selected{% endif %}>Русский</option>
+                        </select>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-2"></i>{% trans "Save Changes" %}
+                    </button>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Plan Information -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-crown me-2"></i>{% trans "Plan Information" %}
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>{% trans "Current Plan" %}</h6>
+                        <p class="mb-3">
+                            <span class="badge bg-{% if profile.status == 'pro' %}warning{% else %}secondary{% endif %} fs-6">
+                                {{ profile.status|upper }}
+                            </span>
+                        </p>
+                        
+                        <h6>{% trans "Plan Limits" %}</h6>
+                        <ul class="list-unstyled">
+                            <li><i class="fas fa-briefcase me-2"></i>{% trans "Portfolios" %}: {{ profile.portfolio_limit }}</li>
+                            <li><i class="fas fa-balance-scale me-2"></i>{% trans "Compare Symbols" %}: {{ profile.compare_limit }}</li>
+                            <li><i class="fas fa-history me-2"></i>{% trans "History Retention" %}: {{ profile.history_retention_days }} {% trans "days" %}</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        {% if profile.status == 'basic' %}
+                            <h6>{% trans "Upgrade to Pro" %}</h6>
+                            <p class="text-muted">{% trans "Get access to advanced features:" %}</p>
+                            <ul class="list-unstyled">
+                                <li><i class="fas fa-check text-success me-2"></i>{% trans "50 saved portfolios" %}</li>
+                                <li><i class="fas fa-check text-success me-2"></i>{% trans "Compare up to 10 symbols" %}</li>
+                                <li><i class="fas fa-check text-success me-2"></i>{% trans "Extended history retention" %}</li>
+                                <li><i class="fas fa-check text-success me-2"></i>{% trans "Advanced forecasting" %}</li>
+                                <li><i class="fas fa-check text-success me-2"></i>{% trans "Export capabilities" %}</li>
+                            </ul>
+                            <a href="{% url 'accounts:upgrade_plan' %}" class="btn btn-warning">
+                                <i class="fas fa-crown me-2"></i>{% trans "Upgrade Now" %}
+                            </a>
+                        {% else %}
+                            <h6>{% trans "Pro Features" %}</h6>
+                            <p class="text-success">{% trans "You have access to all Pro features!" %}</p>
+                            <ul class="list-unstyled">
+                                <li><i class="fas fa-check text-success me-2"></i>{% trans "All advanced tools" %}</li>
+                                <li><i class="fas fa-check text-success me-2"></i>{% trans "Priority support" %}</li>
+                                <li><i class="fas fa-check text-success me-2"></i>{% trans "Export data" %}</li>
+                            </ul>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Account Actions -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-cog me-2"></i>{% trans "Account Actions" %}
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>{% trans "Password" %}</h6>
+                        <p class="text-muted">{% trans "Change your password" %}</p>
+                        <a href="{% url 'account_change_password' %}" class="btn btn-outline-primary">
+                            <i class="fas fa-key me-2"></i>{% trans "Change Password" %}
+                        </a>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <h6>{% trans "Email" %}</h6>
+                        <p class="text-muted">{% trans "Update your email address" %}</p>
+                        <a href="{% url 'account_email' %}" class="btn btn-outline-secondary">
+                            <i class="fas fa-envelope me-2"></i>{% trans "Manage Email" %}
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

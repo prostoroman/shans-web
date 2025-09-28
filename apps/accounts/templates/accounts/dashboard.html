@@ -1,9 +1,141 @@
-{% extends "core/base.html" %}
+{% extends "base.html" %}
 {% load i18n %}
-{% block title %}{% trans "Dashboard" %}{% endblock %}
-{% block content %}
-  <h1>{% trans "Dashboard" %}</h1>
-  <p>{% trans "Plan" %}: {{ profile.status|title }}</p>
-  <p><a href="/account/profile">{% trans "Edit profile" %}</a></p>
-{% endblock %}
 
+{% block title %}{% trans "Dashboard" %} - Shan's Web{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">{% trans "Dashboard" %}</h1>
+        
+        <!-- Plan Status -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            <i class="fas fa-crown me-2"></i>{% trans "Plan Status" %}
+                        </h5>
+                        <p class="card-text">
+                            <span class="badge bg-{% if user_plan == 'pro' %}warning{% else %}secondary{% endif %} fs-6">
+                                {{ user_plan|upper }}
+                            </span>
+                        </p>
+                        {% if user_plan == 'basic' %}
+                            <a href="{% url 'accounts:upgrade_plan' %}" class="btn btn-warning btn-sm">
+                                {% trans "Upgrade to Pro" %}
+                            </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            <i class="fas fa-chart-bar me-2"></i>{% trans "Usage Statistics" %}
+                        </h5>
+                        <p class="card-text">
+                            <small class="text-muted">
+                                {% trans "Portfolios" %}: {{ portfolio_count }}/{{ plan_limits.portfolios }}<br>
+                                {% trans "Compare Limit" %}: {{ plan_limits.compare_symbols }} {% trans "symbols" %}<br>
+                                {% trans "History Retention" %}: {{ plan_limits.history_days }} {% trans "days" %}
+                            </small>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Quick Stats -->
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="fas fa-briefcase fa-2x text-primary mb-2"></i>
+                        <h4>{{ portfolio_count }}</h4>
+                        <p class="card-text">{% trans "Saved Portfolios" %}</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="fas fa-bookmark fa-2x text-success mb-2"></i>
+                        <h4>{{ saved_sets_count }}</h4>
+                        <p class="card-text">{% trans "Saved Sets" %}</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="fas fa-eye fa-2x text-info mb-2"></i>
+                        <h4>{{ recent_views|length }}</h4>
+                        <p class="card-text">{% trans "Recent Views" %}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Recent Activity -->
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-history me-2"></i>{% trans "Recent Activity" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        {% if recent_views %}
+                            <div class="list-group list-group-flush">
+                                {% for view in recent_views %}
+                                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>{{ view.symbol }}</strong>
+                                            <span class="badge bg-secondary ms-2">{{ view.view_type }}</span>
+                                        </div>
+                                        <small class="text-muted">{{ view.timestamp|timesince }} {% trans "ago" %}</small>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <p class="text-muted">{% trans "No recent activity" %}</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-rocket me-2"></i>{% trans "Quick Actions" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-grid gap-2">
+                            <a href="{% url 'portfolio:form' %}" class="btn btn-primary">
+                                <i class="fas fa-plus me-2"></i>{% trans "New Portfolio" %}
+                            </a>
+                            <a href="{% url 'markets:compare' %}" class="btn btn-success">
+                                <i class="fas fa-balance-scale me-2"></i>{% trans "Compare Stocks" %}
+                            </a>
+                            <a href="{% url 'markets:info' %}" class="btn btn-info">
+                                <i class="fas fa-chart-line me-2"></i>{% trans "Stock Analysis" %}
+                            </a>
+                            <a href="{% url 'activity:saved' %}" class="btn btn-outline-secondary">
+                                <i class="fas fa-bookmark me-2"></i>{% trans "View Saved" %}
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

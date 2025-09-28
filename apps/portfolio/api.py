@@ -1,42 +1,221 @@
-from __future__ import annotations
+"""
+Portfolio API views for DRF endpoints.
+"""
 
-from typing import List
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from django.utils.translation import gettext_lazy as _
+import logging
 
-import pandas as pd
+from .models import Portfolio, PortfolioPosition
+from .mpt import (
+    calculate_mean_returns, calculate_covariance_matrix,
+    optimize_portfolio, calculate_efficient_frontier
+)
+from .forecast import calculate_portfolio_forecast
+from .llm import generate_portfolio_commentary
+from apps.data.services import get_instrument_data
 from django.conf import settings
-from django.http import JsonResponse
-from django.urls import path
-from rest_framework.decorators import api_view
 
-from apps.data.services import ensure_prices
-from .mpt import compute_mean_cov, min_variance_portfolio, tangency_portfolio
+logger = logging.getLogger(__name__)
 
 
-@api_view(["POST"])
-def api_portfolio_analyze(request):
-    symbols = request.data.get("symbols", "")
-    syms: List[str] = [s.strip().upper() for s in symbols.split(",") if s.strip()]
-    if not syms:
-        return JsonResponse({"error": "symbols required"}, status=400)
-    frames = {}
-    for s in syms:
-        inst, rows = ensure_prices(s, days=365 * 5)
-        df = pd.DataFrame(
-            {"date": [r.date for r in rows], s: [r.close for r in rows]}
-        ).set_index("date").sort_index()
-        frames[s] = df
-    prices = pd.concat(frames.values(), axis=1, join="inner").dropna()
-    mu, sigma = compute_mean_cov(prices)
-    w_min = min_variance_portfolio(mu, sigma)
-    w_tan = tangency_portfolio(mu, sigma, rf=float(settings.DEFAULT_RF))
-    out = {
-        "weights_min": {k: float(v) for k, v in w_min.items()},
-        "weights_tan": {k: float(v) for k, v in w_tan.items()},
-    }
-    return JsonResponse(out)
+class PortfolioAnalyzeAPIView(APIView):
+    """Portfolio analysis API endpoint."""
+    
+    def post(self, request):
+        """Analyze a portfolio."""
+        try:
+            # Get request data
+            symbols = request.data.get('symbols', [])
+            weights = request.data.get('weights', [])
+            analysis_type = request.data.get('analysis_type', 'basic')
+            
+            if not symbols or not weights:
+                return Response(
+                    {'error': _('Symbols and weights are required')},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if len(symbols) != len(weights):
+                return Response(
+                    {'error': _('Number of symbols and weights must match')},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Check if weights sum to 1
+            total_weight = sum(weights)
+            if abs(total_weight - 1.0) > 0.01:
+                return Response(
+                    {'error': _('Weights must sum to 1.0')},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Get price data for all symbols
+            returns_matrix = []
+            instruments_data = {}
+            
+            for symbol in symbols:
+                data = get_instrument_data(symbol, include_prices=True)
+                if not data or not data['prices']:
+                    return Response(
+                        {'error': _('No price data available for {}').format(symbol)},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                instruments_data[symbol] = data
+                prices = [float(p.close_price) for p in data['prices']]
+                
+                # Calculate returns
+                returns = []
+                for i in range(1, len(prices)):
+                    ret = (prices[i] - prices[i-1]) / prices[i-1]
+                    returns.append(ret)
+                
+                returns_matrix.append(returns)
+            
+            # Align returns (use minimum length)
+            min_length = min(len(returns) for returns in returns_matrix)
+            aligned_returns = [returns[:min_length] for returns in returns_matrix]
+            
+            # Calculate portfolio metrics
+            mean_returns = calculate_mean_returns(aligned_returns)
+            cov_matrix = calculate_covariance_matrix(aligned_returns)
+            
+            # Portfolio optimization
+            optimization_results = {}
+            
+            if analysis_type in ['advanced', 'pro']:
+                # Efficient frontier
+                efficient_frontier = calculate_efficient_frontier(mean_returns, cov_matrix, num_portfolios=50)
+                optimization_results['efficient_frontier'] = efficient_frontier
+            
+            # Current portfolio metrics
+            current_metrics = {
+                'expected_return': sum(weights[i] * mean_returns[i] for i in range(len(weights))),
+                'volatility': 0.0,
+            }
+            
+            # Calculate portfolio volatility
+            portfolio_variance = 0
+            for i in range(len(weights)):
+                for j in range(len(weights)):
+                    portfolio_variance += weights[i] * weights[j] * cov_matrix[i][j]
+            
+            current_metrics['volatility'] = portfolio_variance ** 0.5
+            current_metrics['sharpe_ratio'] = (current_metrics['expected_return'] - settings.DEFAULT_RF) / current_metrics['volatility']
+            
+            # Generate forecast
+            forecast_results = {}
+            if analysis_type in ['advanced', 'pro']:
+                forecast_results = calculate_portfolio_forecast(
+                    weights, aligned_returns, periods=30, method='ewma'
+                )
+            
+            # Generate LLM commentary
+            commentary = None
+            if request.user.is_authenticated:
+                user_plan = request.user.profile.status
+                portfolio_data = {
+                    'positions': [
+                        {'symbol': symbol, 'weight': weight}
+                        for symbol, weight in zip(symbols, weights)
+                    ],
+                    'metrics': current_metrics,
+                    'optimization': optimization_results,
+                }
+                commentary = generate_portfolio_commentary(portfolio_data, user_plan)
+            
+            # Prepare response
+            response_data = {
+                'symbols': symbols,
+                'weights': weights,
+                'current_metrics': current_metrics,
+                'optimization_results': optimization_results,
+                'forecast_results': forecast_results,
+                'commentary': commentary,
+            }
+            
+            return Response(response_data)
+            
+        except Exception as e:
+            logger.error(f"Error in portfolio analysis API: {e}")
+            return Response(
+                {'error': _('Internal server error')},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
-urlpatterns = [
-    path("portfolio/analyze", api_portfolio_analyze, name="api_portfolio_analyze"),
-]
+class PortfolioListAPIView(APIView):
+    """Portfolio list API endpoint."""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """Get user's portfolios."""
+        portfolios = Portfolio.objects.filter(user=request.user).order_by('-created_at')
+        
+        portfolio_data = []
+        for portfolio in portfolios:
+            positions = portfolio.positions.all()
+            portfolio_data.append({
+                'id': portfolio.id,
+                'name': portfolio.name,
+                'description': portfolio.description,
+                'created_at': portfolio.created_at.isoformat(),
+                'expected_return': float(portfolio.expected_return) if portfolio.expected_return else None,
+                'volatility': float(portfolio.volatility) if portfolio.volatility else None,
+                'sharpe_ratio': float(portfolio.sharpe_ratio) if portfolio.sharpe_ratio else None,
+                'positions': [
+                    {
+                        'symbol': pos.symbol,
+                        'weight': float(pos.weight),
+                        'shares': float(pos.shares) if pos.shares else None,
+                        'price': float(pos.price) if pos.price else None,
+                    }
+                    for pos in positions
+                ]
+            })
+        
+        return Response({'portfolios': portfolio_data})
 
+
+class PortfolioDetailAPIView(APIView):
+    """Portfolio detail API endpoint."""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, portfolio_id):
+        """Get portfolio details."""
+        try:
+            portfolio = Portfolio.objects.get(id=portfolio_id, user=request.user)
+            positions = portfolio.positions.all()
+            
+            portfolio_data = {
+                'id': portfolio.id,
+                'name': portfolio.name,
+                'description': portfolio.description,
+                'created_at': portfolio.created_at.isoformat(),
+                'updated_at': portfolio.updated_at.isoformat(),
+                'expected_return': float(portfolio.expected_return) if portfolio.expected_return else None,
+                'volatility': float(portfolio.volatility) if portfolio.volatility else None,
+                'sharpe_ratio': float(portfolio.sharpe_ratio) if portfolio.sharpe_ratio else None,
+                'max_drawdown': float(portfolio.max_drawdown) if portfolio.max_drawdown else None,
+                'positions': [
+                    {
+                        'symbol': pos.symbol,
+                        'weight': float(pos.weight),
+                        'shares': float(pos.shares) if pos.shares else None,
+                        'price': float(pos.price) if pos.price else None,
+                    }
+                    for pos in positions
+                ]
+            }
+            
+            return Response(portfolio_data)
+            
+        except Portfolio.DoesNotExist:
+            return Response(
+                {'error': _('Portfolio not found')},
+                status=status.HTTP_404_NOT_FOUND
+            )

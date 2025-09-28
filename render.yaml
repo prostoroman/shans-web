@@ -2,32 +2,31 @@ services:
   - type: web
     name: shans-web
     env: python
-    plan: starter
-    region: oregon
-    buildCommand: |
-      pip install --upgrade pip
-      pip install .[dev]
-      python -m pip install 'psycopg[binary]'
-      python manage.py collectstatic --noinput
-    startCommand: gunicorn shans_web.wsgi:application --log-file - --bind 0.0.0.0:$PORT
+    plan: free
+    buildCommand: pip install -U pip && pip install -e . && python manage.py collectstatic --noinput && python manage.py migrate
+    startCommand: gunicorn shans_web.wsgi:application
     envVars:
+      - key: DJANGO_DEBUG
+        value: 0
       - key: DJANGO_SECRET_KEY
         generateValue: true
-      - key: DJANGO_DEBUG
-        value: "0"
-      - key: DATABASE_URL
-        fromDatabase:
-          name: shans-web-db
-          property: connectionString
+      - key: FMP_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: CSRF_TRUSTED_ORIGINS
+        value: https://*.onrender.com
       - key: ALLOWED_HOSTS
-        value: "*"
+        value: shans-web.onrender.com
       - key: DEFAULT_RF
-        value: "0.03"
-    healthCheckPath: /healthz
-    autoDeploy: true
+        value: 0.03
+      - key: SITE_ID
+        value: 1
+      - key: EMAIL_BACKEND
+        value: django.core.mail.backends.smtp.EmailBackend
+      - key: DEFAULT_FROM_EMAIL
+        value: noreply@shans-web.com
 
 databases:
   - name: shans-web-db
-    plan: starter
-    region: oregon
-
+    plan: free

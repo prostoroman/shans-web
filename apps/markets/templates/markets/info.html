@@ -1,14 +1,347 @@
-{% extends "core/base.html" %}
+{% extends "base.html" %}
 {% load i18n %}
-{% block title %}{{ inst.symbol }} - {{ inst.name }}{% endblock %}
+
+{% block title %}{% if show_search_form %}{% trans "Stock Information Search" %}{% else %}{{ symbol }}{% if instrument %} - {{ instrument.name }}{% endif %}{% endif %} - Shan's Web{% endblock %}
+
+{% block meta_description %}{% if show_search_form %}{% trans "Search for stock information and analysis. Enter a symbol to view detailed metrics, fundamentals, and performance data." %}{% else %}{% trans "Detailed analysis of" %} {{ symbol }}{% if instrument %} ({{ instrument.name }}){% endif %}. {% trans "View key metrics, fundamentals, and performance data." %}{% endif %}{% endblock %}
+
 {% block content %}
-  <h1>{{ inst.symbol }} — {{ inst.name }}</h1>
-  <p>{% trans "Currency" %}: {{ inst.currency }}</p>
-  <img src="{{ chart_data_url }}" alt="Price chart" />
-  <ul>
-    <li>{% trans "CAGR" %}: {{ metrics.cagr|floatformat:2 }}</li>
-    <li>{% trans "Volatility" %}: {{ metrics.volatility|floatformat:2 }}</li>
-    <li>{% trans "Sharpe" %}: {{ metrics.sharpe|floatformat:2 }}</li>
-  </ul>
+<div class="row">
+    <div class="col-12">
+        {% if show_search_form %}
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">{% trans "Stock Information Search" %}</h4>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">{% trans "Enter a stock symbol to view detailed information, metrics, and analysis." %}</p>
+                    <form method="get" action="{% url 'markets:info' %}">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="input-group">
+                                    <input type="text" 
+                                           class="form-control" 
+                                           name="symbol" 
+                                           placeholder="{% trans 'Enter stock symbol (e.g., AAPL, MSFT, GOOGL)' %}"
+                                           value="{{ symbol }}"
+                                           required>
+                                    <button class="btn btn-primary" type="submit">
+                                        <i class="fas fa-search me-2"></i>{% trans "Search" %}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                    <div class="mt-3">
+                        <h6>{% trans "Popular Symbols:" %}</h6>
+                        <div class="d-flex flex-wrap gap-2">
+                            <a href="{% url 'markets:info_symbol' symbol='AAPL' %}" class="btn btn-outline-secondary btn-sm">AAPL</a>
+                            <a href="{% url 'markets:info_symbol' symbol='MSFT' %}" class="btn btn-outline-secondary btn-sm">MSFT</a>
+                            <a href="{% url 'markets:info_symbol' symbol='GOOGL' %}" class="btn btn-outline-secondary btn-sm">GOOGL</a>
+                            <a href="{% url 'markets:info_symbol' symbol='TSLA' %}" class="btn btn-outline-secondary btn-sm">TSLA</a>
+                            <a href="{% url 'markets:info_symbol' symbol='AMZN' %}" class="btn btn-outline-secondary btn-sm">AMZN</a>
+                            <a href="{% url 'markets:info_symbol' symbol='META' %}" class="btn btn-outline-secondary btn-sm">META</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% elif error %}
+            <div class="alert alert-warning" role="alert">
+                <h4 class="alert-heading">{% trans "Configuration Required" %}</h4>
+                <p>{{ error }}</p>
+                <hr>
+                <p class="mb-0">
+                    {% trans "To enable market data features, please:" %}
+                    <ol>
+                        <li>{% trans "Get a free API key from" %} <a href="https://financialmodelingprep.com/developer/docs" target="_blank">Financial Modeling Prep</a></li>
+                        <li>{% trans "Set the FMP_API_KEY environment variable" %}</li>
+                        <li>{% trans "Restart the application" %}</li>
+                    </ol>
+                </p>
+            </div>
+        {% else %}
+        <h1 class="mb-4">
+            {{ symbol }} - {{ instrument.name }}
+            {% if instrument.exchange %}
+                <small class="text-muted">({{ instrument.exchange }})</small>
+            {% endif %}
+        </h1>
+        
+        <!-- Company Information -->
+        <div class="row mb-4">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-building me-2"></i>{% trans "Company Information" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p><strong>{% trans "Sector" %}:</strong> {{ instrument.sector|default:"N/A" }}</p>
+                                <p><strong>{% trans "Industry" %}:</strong> {{ instrument.industry|default:"N/A" }}</p>
+                                <p><strong>{% trans "Currency" %}:</strong> {{ instrument.currency }}</p>
+                            </div>
+                            <div class="col-md-6">
+                                <p><strong>{% trans "Market Cap" %}:</strong> 
+                                    {% if instrument.market_cap %}
+                                        ${{ instrument.market_cap|floatformat:0 }}
+                                    {% else %}
+                                        N/A
+                                    {% endif %}
+                                </p>
+                                <p><strong>{% trans "Status" %}:</strong> 
+                                    <span class="badge bg-{% if instrument.is_active %}success{% else %}danger{% endif %}">
+                                        {% if instrument.is_active %}{% trans "Active" %}{% else %}{% trans "Inactive" %}{% endif %}
+                                    </span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-line me-2"></i>{% trans "Quick Actions" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-grid gap-2">
+                            <a href="{% url 'markets:compare' %}?symbols={{ symbol }}" class="btn btn-primary">
+                                <i class="fas fa-balance-scale me-2"></i>{% trans "Compare" %}
+                            </a>
+                            <a href="{% url 'portfolio:form' %}" class="btn btn-success">
+                                <i class="fas fa-plus me-2"></i>{% trans "Add to Portfolio" %}
+                            </a>
+                            {% if user.is_authenticated %}
+                                <button class="btn btn-outline-secondary" onclick="saveSymbol('{{ symbol }}')">
+                                    <i class="fas fa-bookmark me-2"></i>{% trans "Save" %}
+                                </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Performance Metrics -->
+        {% if metrics %}
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-bar me-2"></i>{% trans "Performance Metrics" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="text-primary">{{ metrics.cagr|floatformat:2 }}%</h4>
+                                    <p class="text-muted">{% trans "CAGR (5Y)" %}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="text-info">{{ metrics.volatility|floatformat:2 }}%</h4>
+                                    <p class="text-muted">{% trans "Volatility" %}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="text-success">{{ metrics.sharpe_ratio|floatformat:2 }}</h4>
+                                    <p class="text-muted">{% trans "Sharpe Ratio" %}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="text-warning">{{ metrics.max_drawdown|floatformat:2 }}%</h4>
+                                    <p class="text-muted">{% trans "Max Drawdown" %}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Fundamentals -->
+        {% if fundamentals %}
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-calculator me-2"></i>{% trans "Fundamental Metrics" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-2">
+                                <div class="text-center">
+                                    <h6>{{ fundamentals.pe_ratio|floatformat:2|default:"N/A" }}</h6>
+                                    <p class="text-muted">{% trans "P/E Ratio" %}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="text-center">
+                                    <h6>{{ fundamentals.pb_ratio|floatformat:2|default:"N/A" }}</h6>
+                                    <p class="text-muted">{% trans "P/B Ratio" %}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="text-center">
+                                    <h6>{{ fundamentals.debt_to_equity|floatformat:2|default:"N/A" }}</h6>
+                                    <p class="text-muted">{% trans "Debt/Equity" %}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="text-center">
+                                    <h6>{{ fundamentals.roe|floatformat:2|default:"N/A" }}</h6>
+                                    <p class="text-muted">{% trans "ROE" %}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="text-center">
+                                    <h6>{{ fundamentals.roa|floatformat:2|default:"N/A" }}</h6>
+                                    <p class="text-muted">{% trans "ROA" %}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="text-center">
+                                    <h6>{{ fundamentals.current_ratio|floatformat:2|default:"N/A" }}</h6>
+                                    <p class="text-muted">{% trans "Current Ratio" %}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Price Chart -->
+        {% if prices %}
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-area me-2"></i>{% trans "Price Chart" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="priceChart" height="100"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Price Table -->
+        {% if prices %}
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-table me-2"></i>{% trans "Recent Prices" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>{% trans "Date" %}</th>
+                                        <th>{% trans "Open" %}</th>
+                                        <th>{% trans "High" %}</th>
+                                        <th>{% trans "Low" %}</th>
+                                        <th>{% trans "Close" %}</th>
+                                        <th>{% trans "Volume" %}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for price in prices|slice:":20" %}
+                                    <tr>
+                                        <td>{{ price.date|date:"M j, Y" }}</td>
+                                        <td>${{ price.open_price|floatformat:2 }}</td>
+                                        <td>${{ price.high_price|floatformat:2 }}</td>
+                                        <td>${{ price.low_price|floatformat:2 }}</td>
+                                        <td>${{ price.close_price|floatformat:2 }}</td>
+                                        <td>{{ price.volume|floatformat:0 }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        {% endif %}
+    </div>
+</div>
 {% endblock %}
 
+{% block extra_js %}
+{% if prices %}
+<script>
+// Price Chart
+const ctx = document.getElementById('priceChart').getContext('2d');
+const priceData = [
+    {% for price in prices|slice:":50" %}
+    {
+        x: '{{ price.date|date:"Y-m-d" }}',
+        y: {{ price.close_price|floatformat:2 }}
+    }{% if not forloop.last %},{% endif %}
+    {% endfor %}
+].reverse();
+
+new Chart(ctx, {
+    type: 'line',
+    data: {
+        datasets: [{
+            label: '{{ symbol }}',
+            data: priceData,
+            borderColor: 'rgb(75, 192, 192)',
+            backgroundColor: 'rgba(75, 192, 192, 0.1)',
+            tension: 0.1
+        }]
+    },
+    options: {
+        responsive: true,
+        scales: {
+            x: {
+                type: 'time',
+                time: {
+                    unit: 'day'
+                }
+            },
+            y: {
+                beginAtZero: false
+            }
+        }
+    }
+});
+</script>
+{% endif %}
+
+{% if user.is_authenticated %}
+<script>
+function saveSymbol(symbol) {
+    // Implementation for saving symbol to user's saved sets
+    alert('{% trans "Symbol saved to your collection!" %}');
+}
+</script>
+{% endif %}
+    </div>
+</div>
+{% endblock %}

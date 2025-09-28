@@ -1,17 +1,39 @@
-from __future__ import annotations
+"""
+URL configuration for shans_web project.
+"""
 
 from django.contrib import admin
-from django.urls import include, path
+from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
-    path("accounts/", include("allauth.urls")),
-    path("", include("apps.core.urls")),
-    path("", include("apps.accounts.urls")),
-    path("", include("apps.markets.urls")),
-    path("", include("apps.portfolio.urls")),
-    path("", include("apps.activity.urls")),
-    path("api/", include("apps.markets.api")),
-    path("api/", include("apps.portfolio.api")),
+    # Admin
+    path('admin/', admin.site.urls),
+    
+    # Core pages
+    path('', include('apps.core.urls')),
+    
+    # Market analysis
+    path('', include('apps.markets.urls')),
+    
+    # Portfolio analysis
+    path('portfolio/', include('apps.portfolio.urls')),
+    
+    # User accounts and dashboard
+    path('', include('apps.accounts.urls')),
+    
+    # Activity and history
+    path('', include('apps.activity.urls')),
+    
+    # API endpoints
+    path('api/', include('apps.markets.api_urls')),
+    path('api/portfolio/', include('apps.portfolio.api_urls')),
+    
+    # Authentication (django-allauth)
+    path('auth/', include('allauth.urls')),
 ]
 
+# Serve static files in development
+if settings.DEBUG:
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

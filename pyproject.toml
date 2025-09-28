@@ -1,73 +1,111 @@
 [build-system]
-requires = ["hatchling>=1.18.0"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "shans-web"
 version = "0.1.0"
-description = "Server-rendered Django app with DRF API for markets/portfolio analytics"
+description = "Production-ready Django 5.x app with SSR, DRF API, FMP Premium integration"
+authors = [{name = "Shan", email = "shan@example.com"}]
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
-authors = [
-  { name = "Shans Web Team" }
-]
 dependencies = [
-  "Django>=5.0,<6.0",
-  "djangorestframework>=3.15,<4",
-  "django-environ>=0.11",
-  "django-allauth>=64",
-  "whitenoise>=6.6",
-  "requests>=2.32",
-  "httpx>=0.27",
-  "pandas>=2.2",
-  "numpy>=1.26",
-  "scipy>=1.12",
-  "matplotlib>=3.8",
-  "Pillow>=10.0",
-  "gunicorn>=21.2",
-  "python-dotenv>=1.0",
-  "django-crispy-forms>=2.3",
+    # Django core
+    "django>=5.0,<6.0",
+    "djangorestframework>=3.14.0",
+    "django-environ>=0.11.0",
+    "django-allauth>=0.57.0",
+    "whitenoise>=6.6.0",
+    
+    # Data and financial
+    "fmp_python>=0.1.5",
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    
+    # HTTP and utilities
+    "httpx>=0.25.0",
+    "requests>=2.31.0",
+    
+    # Charts and visualization
+    "matplotlib>=3.7.0",
+    "plotly>=5.15.0",
+    
+    # Production
+    "gunicorn>=21.2.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-  "pytest>=8.0",
-  "pytest-django>=4.8",
-  "ruff>=0.5.5",
-  "black>=24.8.0",
-  "mypy>=1.10",
+    "python-dotenv>=1.0.0",
+    "pytest>=7.4.0",
+    "pytest-django>=4.5.0",
+    "ruff>=0.1.0",
+    "black>=23.7.0",
+    "mypy>=1.5.0",
+    "django-debug-toolbar>=4.2.0",
 ]
 
-[project.urls]
-Homepage = "https://example.com"
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["shans_web*", "apps*"]
 
 [tool.black]
-line-length = 100
-target-version = ["py311"]
-exclude = [
-  "/.venv",
-  "/.git",
-  "/node_modules",
-]
+line-length = 88
+target-version = ['py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
 
 [tool.ruff]
-line-length = 100
 target-version = "py311"
-extend-select = ["I"]
-ignore = ["E501"]
+line-length = 88
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long, handled by black
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+]
 
-[tool.ruff.lint.isort]
-known-first-party = ["shans_web", "apps"]
-
-[tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "shans_web.settings"
-pythonpath = ["."]
-testpaths = ["tests"]
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]
 
 [tool.mypy]
 python_version = "3.11"
-warn_unused_configs = true
-ignore_missing_imports = true
-exclude = [".venv", "node_modules", "migrations"]
+check_untyped_defs = true
+disallow_any_generics = true
+disallow_incomplete_defs = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+strict_equality = true
 
+[[tool.mypy.overrides]]
+module = [
+    "fmp_python.*",
+    "matplotlib.*",
+    "plotly.*",
+    "scipy.*",
+]
+ignore_missing_imports = true

@@ -1,2 +1,1 @@
-web: gunicorn shans_web.wsgi:application --workers 3 --timeout 120 --log-file -
-
+web: gunicorn shans_web.wsgi:application --bind 0.0.0.0:$PORT

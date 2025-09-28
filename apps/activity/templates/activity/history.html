@@ -1,21 +1,199 @@
-{% extends "core/base.html" %}
+{% extends "base.html" %}
 {% load i18n %}
-{% block title %}{% trans "History" %}{% endblock %}
+
+{% block title %}{% trans "Viewing History" %} - Shan's Web{% endblock %}
+
 {% block content %}
-  <h1>{% trans "Viewing history" %}</h1>
-  <ul>
-    {% for e in page.object_list %}
-      <li>{{ e.viewed_at }} — {{ e.symbol }}</li>
-    {% empty %}
-      <li>{% trans "No views yet." %}</li>
-    {% endfor %}
-  </ul>
-  {% if page.has_other_pages %}
-  <nav>
-    {% if page.has_previous %}<a href="?page={{ page.previous_page_number }}">{% trans "Prev" %}</a>{% endif %}
-    <span>{{ page.number }}/{{ page.paginator.num_pages }}</span>
-    {% if page.has_next %}<a href="?page={{ page.next_page_number }}">{% trans "Next" %}</a>{% endif %}
-  </nav>
-  {% endif %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">{% trans "Viewing History" %}</h1>
+        
+        <!-- History Actions -->
+        <div class="row mb-4">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-history me-2"></i>{% trans "Your Viewing History" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted">
+                            {% trans "Track your recent symbol views and analysis activity." %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-cog me-2"></i>{% trans "Actions" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-outline-danger" onclick="clearHistory()">
+                                <i class="fas fa-trash me-2"></i>{% trans "Clear History" %}
+                            </button>
+                            <a href="{% url 'activity:saved' %}" class="btn btn-outline-primary">
+                                <i class="fas fa-bookmark me-2"></i>{% trans "View Saved" %}
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- History List -->
+        {% if view_events %}
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-list me-2"></i>{% trans "Recent Activity" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="list-group list-group-flush">
+                            {% for event in view_events %}
+                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div class="d-flex align-items-center">
+                                        <div class="me-3">
+                                            {% if event.view_type == 'info' %}
+                                                <i class="fas fa-chart-line text-primary"></i>
+                                            {% elif event.view_type == 'compare' %}
+                                                <i class="fas fa-balance-scale text-success"></i>
+                                            {% elif event.view_type == 'portfolio' %}
+                                                <i class="fas fa-briefcase text-warning"></i>
+                                            {% else %}
+                                                <i class="fas fa-eye text-secondary"></i>
+                                            {% endif %}
+                                        </div>
+                                        <div>
+                                            <h6 class="mb-1">
+                                                {% if event.view_type == 'compare' %}
+                                                    {% trans "Compared" %}: {{ event.symbol }}
+                                                {% else %}
+                                                    {{ event.symbol }}
+                                                {% endif %}
+                                            </h6>
+                                            <small class="text-muted">
+                                                {% trans "Viewed" %} {{ event.timestamp|timesince }} {% trans "ago" %}
+                                            </small>
+                                        </div>
+                                    </div>
+                                    <div class="d-flex align-items-center">
+                                        <span class="badge bg-{% if event.view_type == 'info' %}primary{% elif event.view_type == 'compare' %}success{% elif event.view_type == 'portfolio' %}warning{% else %}secondary{% endif %} me-2">
+                                            {{ event.view_type|title }}
+                                        </span>
+                                        <div class="btn-group btn-group-sm">
+                                            {% if event.view_type == 'info' %}
+                                                <a href="{% url 'markets:info_symbol' symbol=event.symbol %}" class="btn btn-outline-primary btn-sm">
+                                                    <i class="fas fa-eye"></i>
+                                                </a>
+                                            {% elif event.view_type == 'compare' %}
+                                                <a href="{% url 'markets:compare' %}?symbols={{ event.symbol }}" class="btn btn-outline-success btn-sm">
+                                                    <i class="fas fa-balance-scale"></i>
+                                                </a>
+                                            {% elif event.view_type == 'portfolio' %}
+                                                <a href="{% url 'portfolio:form' %}" class="btn btn-outline-warning btn-sm">
+                                                    <i class="fas fa-briefcase"></i>
+                                                </a>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Pagination -->
+        {% if page_obj.has_other_pages %}
+        <div class="row mt-4">
+            <div class="col-12">
+                <nav aria-label="{% trans 'History pagination' %}">
+                    <ul class="pagination justify-content-center">
+                        {% if page_obj.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page=1">{% trans "First" %}</a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}">{% trans "Previous" %}</a>
+                            </li>
+                        {% endif %}
+                        
+                        <li class="page-item active">
+                            <span class="page-link">
+                                {% trans "Page" %} {{ page_obj.number }} {% trans "of" %} {{ page_obj.paginator.num_pages }}
+                            </span>
+                        </li>
+                        
+                        {% if page_obj.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.next_page_number }}">{% trans "Next" %}</a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}">{% trans "Last" %}</a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+            </div>
+        </div>
+        {% endif %}
+        
+        {% else %}
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body text-center py-5">
+                        <i class="fas fa-history fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted">{% trans "No viewing history yet" %}</h5>
+                        <p class="text-muted">
+                            {% trans "Start exploring stocks and your viewing history will appear here." %}
+                        </p>
+                        <a href="{% url 'markets:info' %}" class="btn btn-primary">
+                            <i class="fas fa-chart-line me-2"></i>{% trans "Explore Stocks" %}
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
 {% endblock %}
 
+{% block extra_js %}
+<script>
+function clearHistory() {
+    if (confirm('{% trans "Are you sure you want to clear your viewing history? This action cannot be undone." %}')) {
+        fetch('{% url "activity:clear_history" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': '{{ csrf_token }}'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('{% trans "Error clearing history" %}');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('{% trans "Error clearing history" %}');
+        });
+    }
+}
+</script>
+{% endblock %}

@@ -1,13 +1,112 @@
-{% extends "core/base.html" %}
+{% extends "base.html" %}
 {% load i18n %}
-{% block title %}{% trans "Home" %}{% endblock %}
-{% block content %}
-  <h1>{% trans "Welcome to Shans Web" %}</h1>
-  <p>{% trans "Search and analyze instruments, compare, and build portfolios." %}</p>
-  <ul>
-    <li><a href="/info/AAPL">{% trans "Example: Info AAPL" %}</a></li>
-    <li><a href="/compare/AAPL,MSFT">{% trans "Example: Compare AAPL vs MSFT" %}</a></li>
-    <li><a href="/portfolio">{% trans "Analyze a portfolio" %}</a></li>
-  </ul>
-{% endblock %}
 
+{% block title %}{% trans "Home" %} - Shan's Web{% endblock %}
+
+{% block meta_description %}{% trans "Professional financial analysis, portfolio optimization, and market insights. Analyze stocks, compare investments, and optimize your portfolio with advanced tools." %}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 mx-auto text-center">
+        <h1 class="display-4 mb-4">{% trans "Welcome to Shan's Web" %}</h1>
+        <p class="lead mb-4">
+            {% trans "Professional financial analysis, portfolio optimization, and market insights. Make informed investment decisions with our comprehensive tools." %}
+        </p>
+        
+        <div class="row g-4 mb-5">
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-chart-line fa-3x text-primary mb-3"></i>
+                        <h5 class="card-title">{% trans "Market Analysis" %}</h5>
+                        <p class="card-text">{% trans "Get detailed analysis of individual stocks with key metrics, fundamentals, and performance data." %}</p>
+                        <a href="{% url 'markets:info' %}" class="btn btn-primary">{% trans "Analyze Stocks" %}</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-balance-scale fa-3x text-success mb-3"></i>
+                        <h5 class="card-title">{% trans "Compare Investments" %}</h5>
+                        <p class="card-text">{% trans "Compare multiple stocks side-by-side with correlation analysis and performance metrics." %}</p>
+                        <a href="{% url 'markets:compare' %}" class="btn btn-success">{% trans "Compare Stocks" %}</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-briefcase fa-3x text-warning mb-3"></i>
+                        <h5 class="card-title">{% trans "Portfolio Optimization" %}</h5>
+                        <p class="card-text">{% trans "Optimize your portfolio with modern portfolio theory, risk analysis, and forecasting tools." %}</p>
+                        <a href="{% url 'portfolio:form' %}" class="btn btn-warning">{% trans "Optimize Portfolio" %}</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-6">
+                <h3>{% trans "Key Features" %}</h3>
+                <ul class="list-unstyled">
+                    <li><i class="fas fa-check text-success me-2"></i>{% trans "Real-time market data via Financial Modeling Prep" %}</li>
+                    <li><i class="fas fa-check text-success me-2"></i>{% trans "Advanced portfolio optimization algorithms" %}</li>
+                    <li><i class="fas fa-check text-success me-2"></i>{% trans "Risk analysis and forecasting tools" %}</li>
+                    <li><i class="fas fa-check text-success me-2"></i>{% trans "User accounts with saved portfolios" %}</li>
+                    <li><i class="fas fa-check text-success me-2"></i>{% trans "Tiered access (Basic/Pro plans)" %}</li>
+                </ul>
+            </div>
+            
+            <div class="col-md-6">
+                <h3>{% trans "Getting Started" %}</h3>
+                <ol>
+                    <li>{% trans "Sign up for a free account" %}</li>
+                    <li>{% trans "Explore market analysis tools" %}</li>
+                    <li>{% trans "Create your first portfolio" %}</li>
+                    <li>{% trans "Optimize and track performance" %}</li>
+                </ol>
+                
+                {% if not user.is_authenticated %}
+                    <div class="mt-3">
+                        <a href="{% url 'account_signup' %}" class="btn btn-primary me-2">{% trans "Sign Up Free" %}</a>
+                        <a href="{% url 'account_login' %}" class="btn btn-outline-primary">{% trans "Login" %}</a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if user.is_authenticated %}
+<div class="row mt-5">
+    <div class="col-12">
+        <h3>{% trans "Quick Actions" %}</h3>
+        <div class="row g-3">
+            <div class="col-md-3">
+                <a href="{% url 'accounts:dashboard' %}" class="btn btn-outline-primary w-100">
+                    <i class="fas fa-tachometer-alt me-2"></i>{% trans "Dashboard" %}
+                </a>
+            </div>
+            <div class="col-md-3">
+                <a href="{% url 'activity:history' %}" class="btn btn-outline-secondary w-100">
+                    <i class="fas fa-history me-2"></i>{% trans "View History" %}
+                </a>
+            </div>
+            <div class="col-md-3">
+                <a href="{% url 'activity:saved' %}" class="btn btn-outline-info w-100">
+                    <i class="fas fa-bookmark me-2"></i>{% trans "Saved Sets" %}
+                </a>
+            </div>
+            <div class="col-md-3">
+                <a href="{% url 'accounts:profile' %}" class="btn btn-outline-success w-100">
+                    <i class="fas fa-user-cog me-2"></i>{% trans "Profile" %}
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

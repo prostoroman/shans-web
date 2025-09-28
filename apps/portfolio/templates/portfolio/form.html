@@ -1,16 +1,225 @@
-{% extends "core/base.html" %}
+{% extends "base.html" %}
 {% load i18n %}
-{% block title %}{% trans "Portfolio" %}{% endblock %}
+
+{% block title %}{% trans "Portfolio Analysis" %} - Shan's Web{% endblock %}
+
 {% block content %}
-  <h1>{% trans "Portfolio analysis" %}</h1>
-  <form method="post" action="/portfolio/analyze">
-    {% csrf_token %}
-    <label>{% trans "Symbols (comma-separated)" %}</label>
-    <input type="text" name="symbols" placeholder="AAPL,MSFT,GOOG" />
-    <label>
-      <input type="checkbox" name="save" /> {% trans "Save to my portfolios" %}
-    </label>
-    <button type="submit">{% trans "Analyze" %}</button>
-  </form>
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <h1 class="mb-4">{% trans "Portfolio Analysis" %}</h1>
+        
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-briefcase me-2"></i>{% trans "Create Portfolio Analysis" %}
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <!-- Symbols Input -->
+                    <div class="mb-3">
+                        <label for="symbols" class="form-label">
+                            <i class="fas fa-chart-line me-2"></i>{% trans "Stock Symbols" %}
+                        </label>
+                        <input type="text" class="form-control" id="symbols" name="symbols" 
+                               placeholder="{% trans 'Enter symbols separated by commas (e.g., AAPL,MSFT,GOOGL,AMZN)' %}"
+                               required>
+                        <div class="form-text">
+                            {% trans "Enter 2-10 stock symbols to analyze. Symbols should be separated by commas." %}
+                        </div>
+                    </div>
+                    
+                    <!-- Weights Input -->
+                    <div class="mb-3">
+                        <label for="weights" class="form-label">
+                            <i class="fas fa-balance-scale me-2"></i>{% trans "Portfolio Weights" %}
+                        </label>
+                        <input type="text" class="form-control" id="weights" name="weights" 
+                               placeholder="{% trans 'Enter weights separated by commas (e.g., 0.4,0.3,0.2,0.1)' %}"
+                               required>
+                        <div class="form-text">
+                            {% trans "Enter weights as decimals (e.g., 0.4 for 40%). Weights must sum to 1.0." %}
+                        </div>
+                    </div>
+                    
+                    <!-- Analysis Type -->
+                    <div class="mb-3">
+                        <label for="analysis_type" class="form-label">
+                            <i class="fas fa-cogs me-2"></i>{% trans "Analysis Type" %}
+                        </label>
+                        <select class="form-select" id="analysis_type" name="analysis_type">
+                            <option value="basic">{% trans "Basic Analysis" %}</option>
+                            <option value="advanced">{% trans "Advanced Analysis" %} ({% trans "Pro" %})</option>
+                            <option value="pro">{% trans "Professional Analysis" %} ({% trans "Pro" %})</option>
+                        </select>
+                        <div class="form-text">
+                            {% trans "Basic: Core metrics only. Advanced/Pro: Includes optimization and forecasting." %}
+                        </div>
+                    </div>
+                    
+                    <!-- Submit Button -->
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="fas fa-chart-bar me-2"></i>{% trans "Analyze Portfolio" %}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Instructions -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-info-circle me-2"></i>{% trans "How to Use" %}
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>{% trans "Step 1: Enter Symbols" %}</h6>
+                        <p class="text-muted">
+                            {% trans "Enter stock symbols separated by commas. For example: AAPL,MSFT,GOOGL,AMZN" %}
+                        </p>
+                        
+                        <h6>{% trans "Step 2: Set Weights" %}</h6>
+                        <p class="text-muted">
+                            {% trans "Enter portfolio weights as decimals. For example: 0.4,0.3,0.2,0.1 (must sum to 1.0)" %}
+                        </p>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <h6>{% trans "Step 3: Choose Analysis" %}</h6>
+                        <p class="text-muted">
+                            {% trans "Select the level of analysis. Pro features require a Pro account." %}
+                        </p>
+                        
+                        <h6>{% trans "Step 4: Get Results" %}</h6>
+                        <p class="text-muted">
+                            {% trans "View comprehensive portfolio analysis including risk metrics, optimization, and forecasts." %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Features by Plan -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-star me-2"></i>{% trans "Analysis Features" %}
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <h6 class="text-primary">{% trans "Basic Analysis" %}</h6>
+                        <ul class="list-unstyled">
+                            <li><i class="fas fa-check text-success me-2"></i>{% trans "Portfolio metrics" %}</li>
+                            <li><i class="fas fa-check text-success me-2"></i>{% trans "Risk analysis" %}</li>
+                            <li><i class="fas fa-check text-success me-2"></i>{% trans "Performance summary" %}</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <h6 class="text-warning">{% trans "Advanced Analysis" %} ({% trans "Pro" %})</h6>
+                        <ul class="list-unstyled">
+                            <li><i class="fas fa-check text-success me-2"></i>{% trans "Efficient frontier" %}</li>
+                            <li><i class="fas fa-check text-success me-2"></i>{% trans "Optimization" %}</li>
+                            <li><i class="fas fa-check text-success me-2"></i>{% trans "Risk decomposition" %}</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <h6 class="text-warning">{% trans "Professional Analysis" %} ({% trans "Pro" %})</h6>
+                        <ul class="list-unstyled">
+                            <li><i class="fas fa-check text-success me-2"></i>{% trans "Forecasting" %}</li>
+                            <li><i class="fas fa-check text-success me-2"></i>{% trans "Scenario analysis" %}</li>
+                            <li><i class="fas fa-check text-success me-2"></i>{% trans "AI commentary" %}</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Example Portfolios -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-lightbulb me-2"></i>{% trans "Example Portfolios" %}
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>{% trans "Tech Growth Portfolio" %}</h6>
+                        <p class="text-muted">
+                            <strong>{% trans "Symbols" %}:</strong> AAPL,MSFT,GOOGL,AMZN<br>
+                            <strong>{% trans "Weights" %}:</strong> 0.3,0.3,0.2,0.2
+                        </p>
+                        <button class="btn btn-outline-primary btn-sm" onclick="loadExample('AAPL,MSFT,GOOGL,AMZN', '0.3,0.3,0.2,0.2')">
+                            {% trans "Load Example" %}
+                        </button>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <h6>{% trans "Balanced Portfolio" %}</h6>
+                        <p class="text-muted">
+                            <strong>{% trans "Symbols" %}:</strong> SPY,QQQ,IWM,GLD<br>
+                            <strong>{% trans "Weights" %}:</strong> 0.4,0.3,0.2,0.1
+                        </p>
+                        <button class="btn btn-outline-primary btn-sm" onclick="loadExample('SPY,QQQ,IWM,GLD', '0.4,0.3,0.2,0.1')">
+                            {% trans "Load Example" %}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
+{% block extra_js %}
+<script>
+function loadExample(symbols, weights) {
+    document.getElementById('symbols').value = symbols;
+    document.getElementById('weights').value = weights;
+}
+
+// Form validation
+document.querySelector('form').addEventListener('submit', function(e) {
+    const symbols = document.getElementById('symbols').value.trim();
+    const weights = document.getElementById('weights').value.trim();
+    
+    if (!symbols || !weights) {
+        e.preventDefault();
+        alert('{% trans "Please enter both symbols and weights" %}');
+        return;
+    }
+    
+    const symbolList = symbols.split(',').map(s => s.trim());
+    const weightList = weights.split(',').map(w => parseFloat(w.trim()));
+    
+    if (symbolList.length !== weightList.length) {
+        e.preventDefault();
+        alert('{% trans "Number of symbols and weights must match" %}');
+        return;
+    }
+    
+    const totalWeight = weightList.reduce((sum, w) => sum + w, 0);
+    if (Math.abs(totalWeight - 1.0) > 0.01) {
+        e.preventDefault();
+        alert('{% trans "Weights must sum to 1.0" %}');
+        return;
+    }
+    
+    if (symbolList.length < 2 || symbolList.length > 10) {
+        e.preventDefault();
+        alert('{% trans "Please enter 2-10 symbols" %}');
+        return;
+    }
+});
+</script>
+{% endblock %}

@@ -1,14 +1,202 @@
-{% extends "core/base.html" %}
+{% extends "base.html" %}
 {% load i18n %}
-{% block title %}{% trans "Saved" %}{% endblock %}
+
+{% block title %}{% trans "Saved Sets" %} - Shan's Web{% endblock %}
+
 {% block content %}
-  <h1>{% trans "Saved items" %}</h1>
-  <ul>
-    {% for it in items %}
-      <li>{{ it.created_at }} — {{ it.type }} — {{ it.name }}</li>
-    {% empty %}
-      <li>{% trans "No saved items." %}</li>
-    {% endfor %}
-  </ul>
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">{% trans "Saved Sets" %}</h1>
+        
+        <!-- Saved Sets Actions -->
+        <div class="row mb-4">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-bookmark me-2"></i>{% trans "Your Saved Sets" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted">
+                            {% trans "Manage your saved comparison sets, portfolios, and watchlists." %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-plus me-2"></i>{% trans "Quick Actions" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-grid gap-2">
+                            <a href="{% url 'markets:compare' %}" class="btn btn-primary">
+                                <i class="fas fa-balance-scale me-2"></i>{% trans "New Comparison" %}
+                            </a>
+                            <a href="{% url 'portfolio:form' %}" class="btn btn-success">
+                                <i class="fas fa-briefcase me-2"></i>{% trans "New Portfolio" %}
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Saved Sets List -->
+        {% if saved_sets %}
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-list me-2"></i>{% trans "Saved Items" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="list-group list-group-flush">
+                            {% for saved_set in saved_sets %}
+                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div class="d-flex align-items-center">
+                                        <div class="me-3">
+                                            {% if saved_set.set_type == 'compare' %}
+                                                <i class="fas fa-balance-scale text-success"></i>
+                                            {% elif saved_set.set_type == 'portfolio' %}
+                                                <i class="fas fa-briefcase text-warning"></i>
+                                            {% elif saved_set.set_type == 'watchlist' %}
+                                                <i class="fas fa-eye text-info"></i>
+                                            {% else %}
+                                                <i class="fas fa-bookmark text-secondary"></i>
+                                            {% endif %}
+                                        </div>
+                                        <div>
+                                            <h6 class="mb-1">{{ saved_set.name }}</h6>
+                                            <small class="text-muted">
+                                                {% trans "Type" %}: {{ saved_set.set_type|title }} | 
+                                                {% trans "Symbols" %}: {{ saved_set.symbol_count }} |
+                                                {% trans "Created" %}: {{ saved_set.created_at|date:"M j, Y" }}
+                                            </small>
+                                            {% if saved_set.description %}
+                                                <br><small class="text-muted">{{ saved_set.description }}</small>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    <div class="d-flex align-items-center">
+                                        <span class="badge bg-{% if saved_set.set_type == 'compare' %}success{% elif saved_set.set_type == 'portfolio' %}warning{% elif saved_set.set_type == 'watchlist' %}info{% else %}secondary{% endif %} me-2">
+                                            {{ saved_set.set_type|title }}
+                                        </span>
+                                        <div class="btn-group btn-group-sm">
+                                            {% if saved_set.set_type == 'compare' %}
+                                                <a href="{% url 'markets:compare' %}?symbols={{ saved_set.symbols|join:',' }}" class="btn btn-outline-success btn-sm">
+                                                    <i class="fas fa-balance-scale"></i>
+                                                </a>
+                                            {% elif saved_set.set_type == 'portfolio' %}
+                                                <a href="{% url 'portfolio:form' %}" class="btn btn-outline-warning btn-sm">
+                                                    <i class="fas fa-briefcase"></i>
+                                                </a>
+                                            {% endif %}
+                                            <button class="btn btn-outline-danger btn-sm" onclick="deleteSavedSet({{ saved_set.id }})">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Pagination -->
+        {% if page_obj.has_other_pages %}
+        <div class="row mt-4">
+            <div class="col-12">
+                <nav aria-label="{% trans 'Saved sets pagination' %}">
+                    <ul class="pagination justify-content-center">
+                        {% if page_obj.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page=1">{% trans "First" %}</a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}">{% trans "Previous" %}</a>
+                            </li>
+                        {% endif %}
+                        
+                        <li class="page-item active">
+                            <span class="page-link">
+                                {% trans "Page" %} {{ page_obj.number }} {% trans "of" %} {{ page_obj.paginator.num_pages }}
+                            </span>
+                        </li>
+                        
+                        {% if page_obj.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.next_page_number }}">{% trans "Next" %}</a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}">{% trans "Last" %}</a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+            </div>
+        </div>
+        {% endif %}
+        
+        {% else %}
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body text-center py-5">
+                        <i class="fas fa-bookmark fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted">{% trans "No saved sets yet" %}</h5>
+                        <p class="text-muted">
+                            {% trans "Save your favorite comparisons and portfolios for easy access." %}
+                        </p>
+                        <div class="d-grid gap-2 d-md-block">
+                            <a href="{% url 'markets:compare' %}" class="btn btn-primary">
+                                <i class="fas fa-balance-scale me-2"></i>{% trans "Create Comparison" %}
+                            </a>
+                            <a href="{% url 'portfolio:form' %}" class="btn btn-success">
+                                <i class="fas fa-briefcase me-2"></i>{% trans "Create Portfolio" %}
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
 {% endblock %}
 
+{% block extra_js %}
+<script>
+function deleteSavedSet(setId) {
+    if (confirm('{% trans "Are you sure you want to delete this saved set? This action cannot be undone." %}')) {
+        fetch(`/activity/saved/${setId}/delete/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': '{{ csrf_token }}'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('{% trans "Error deleting saved set" %}');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('{% trans "Error deleting saved set" %}');
+        });
+    }
+}
+</script>
+{% endblock %}

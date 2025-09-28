@@ -1,22 +1,312 @@
-{% extends "core/base.html" %}
+{% extends "base.html" %}
 {% load i18n %}
-{% block title %}{% trans "Portfolio results" %}{% endblock %}
+
+{% block title %}{% trans "Portfolio Analysis Results" %} - Shan's Web{% endblock %}
+
 {% block content %}
-  <h1>{% trans "Results" %}</h1>
-  {% if saved_id %}
-    <p>{% trans "Saved portfolio ID" %}: {{ saved_id }}</p>
-  {% endif %}
-  <h2>{% trans "Min-variance weights" %}</h2>
-  <ul>
-    {% for k, v in weights_min.items %}
-      <li>{{ k }}: {{ v }}</li>
-    {% endfor %}
-  </ul>
-  <h2>{% trans "Tangency weights" %}</h2>
-  <ul>
-    {% for k, v in weights_tan.items %}
-      <li>{{ k }}: {{ v }}</li>
-    {% endfor %}
-  </ul>
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">{% trans "Portfolio Analysis Results" %}</h1>
+        
+        <!-- Portfolio Summary -->
+        <div class="row mb-4">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-briefcase me-2"></i>{% trans "Portfolio Summary" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>{% trans "Symbols" %}</h6>
+                                <p class="mb-2">
+                                    {% for symbol in symbols %}
+                                        <span class="badge bg-primary me-1">{{ symbol }}</span>
+                                    {% endfor %}
+                                </p>
+                                
+                                <h6>{% trans "Weights" %}</h6>
+                                <ul class="list-unstyled">
+                                    {% for symbol in symbols %}
+                                        {% for weight in weights %}
+                                            {% if forloop.counter0 == forloop.parentloop.counter0 %}
+                                                <li>{{ symbol }}: {{ weight|floatformat:1 }}%</li>
+                                            {% endif %}
+                                        {% endfor %}
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <h6>{% trans "Analysis Type" %}</h6>
+                                <p class="mb-2">
+                                    <span class="badge bg-{% if analysis_type == 'basic' %}secondary{% else %}warning{% endif %}">
+                                        {{ analysis_type|title }}
+                                    </span>
+                                </p>
+                                
+                                {% if saved_portfolio %}
+                                    <h6>{% trans "Saved Portfolio" %}</h6>
+                                    <p class="text-success">
+                                        <i class="fas fa-check me-2"></i>{% trans "Portfolio saved successfully" %}
+                                    </p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-bar me-2"></i>{% trans "Quick Actions" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-grid gap-2">
+                            <a href="{% url 'portfolio:form' %}" class="btn btn-primary">
+                                <i class="fas fa-plus me-2"></i>{% trans "New Analysis" %}
+                            </a>
+                            {% if user.is_authenticated %}
+                                <a href="{% url 'portfolio:list' %}" class="btn btn-outline-secondary">
+                                    <i class="fas fa-list me-2"></i>{% trans "My Portfolios" %}
+                                </a>
+                            {% endif %}
+                            <button class="btn btn-outline-info" onclick="exportResults()">
+                                <i class="fas fa-download me-2"></i>{% trans "Export" %}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Current Portfolio Metrics -->
+        {% if current_metrics %}
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-line me-2"></i>{% trans "Portfolio Metrics" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="text-primary">{{ current_metrics.expected_return|floatformat:2 }}%</h4>
+                                    <p class="text-muted">{% trans "Expected Return" %}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="text-info">{{ current_metrics.volatility|floatformat:2 }}%</h4>
+                                    <p class="text-muted">{% trans "Volatility" %}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="text-success">{{ current_metrics.sharpe_ratio|floatformat:2 }}</h4>
+                                    <p class="text-muted">{% trans "Sharpe Ratio" %}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="text-warning">{{ current_metrics.max_drawdown|floatformat:2 }}%</h4>
+                                    <p class="text-muted">{% trans "Max Drawdown" %}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Optimization Results -->
+        {% if optimization_results %}
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-cogs me-2"></i>{% trans "Portfolio Optimization" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        {% if optimization_results.minimum_variance %}
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <h6>{% trans "Minimum Variance Portfolio" %}</h6>
+                                    <p class="text-muted">
+                                        {% trans "Volatility" %}: {{ optimization_results.minimum_variance.volatility|floatformat:2 }}%
+                                    </p>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6>{% trans "Optimal Weights" %}</h6>
+                                    <ul class="list-unstyled">
+                                        {% for weight in optimization_results.minimum_variance.weights %}
+                                            {% for symbol in symbols %}
+                                                {% if forloop.counter0 == forloop.parentloop.counter0 %}
+                                                    <li>{{ symbol }}: {{ weight|floatformat:1 }}%</li>
+                                                {% endif %}
+                                            {% endfor %}
+                                        {% endfor %}
+                                    </ul>
+                                </div>
+                            </div>
+                        {% endif %}
+                        
+                        {% if optimization_results.tangency %}
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <h6>{% trans "Tangency Portfolio (Max Sharpe)" %}</h6>
+                                    <p class="text-muted">
+                                        {% trans "Sharpe Ratio" %}: {{ optimization_results.tangency.sharpe_ratio|floatformat:2 }}
+                                    </p>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6>{% trans "Optimal Weights" %}</h6>
+                                    <ul class="list-unstyled">
+                                        {% for weight in optimization_results.tangency.weights %}
+                                            {% for symbol in symbols %}
+                                                {% if forloop.counter0 == forloop.parentloop.counter0 %}
+                                                    <li>{{ symbol }}: {{ weight|floatformat:1 }}%</li>
+                                                {% endif %}
+                                            {% endfor %}
+                                        {% endfor %}
+                                    </ul>
+                                </div>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Forecast Results -->
+        {% if forecast_results %}
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-crystal-ball me-2"></i>{% trans "Portfolio Forecast" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>{% trans "Expected Performance" %}</h6>
+                                <p class="text-muted">
+                                    {% trans "Expected Return" %}: {{ forecast_results.expected_return|floatformat:2 }}%<br>
+                                    {% trans "Expected Volatility" %}: {{ forecast_results.expected_volatility|floatformat:2 }}%
+                                </p>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>{% trans "Forecast Method" %}</h6>
+                                <p class="text-muted">
+                                    {{ forecast_results.method|title }} {% trans "Forecasting" %}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- AI Commentary -->
+        {% if commentary %}
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-robot me-2"></i>{% trans "AI Portfolio Commentary" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            {% trans "This commentary is generated by AI and should not be considered as financial advice." %}
+                        </div>
+                        <p>{{ commentary|linebreaks }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Detailed Analysis -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-table me-2"></i>{% trans "Detailed Analysis" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>{% trans "Symbol" %}</th>
+                                        <th>{% trans "Weight" %}</th>
+                                        <th>{% trans "Company" %}</th>
+                                        <th>{% trans "Sector" %}</th>
+                                        <th>{% trans "Market Cap" %}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for symbol in symbols %}
+                                        {% if symbol in instruments_data %}
+                                            {% for key, data in instruments_data.items %}
+                                                {% if key == symbol %}
+                                            <tr>
+                                                <td><strong>{{ symbol }}</strong></td>
+                                                {% for weight in weights %}
+                                                    {% if forloop.counter0 == forloop.parentloop.parentloop.counter0 %}
+                                                        <td>{{ weight|floatformat:1 }}%</td>
+                                                    {% endif %}
+                                                {% endfor %}
+                                                <td>{{ data.instrument.name }}</td>
+                                                <td>{{ data.instrument.sector|default:"N/A" }}</td>
+                                                <td>
+                                                    {% if data.instrument.market_cap %}
+                                                        ${{ data.instrument.market_cap|floatformat:0 }}
+                                                    {% else %}
+                                                        N/A
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                                {% endif %}
+                                            {% endfor %}
+                                        {% endif %}
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
+{% block extra_js %}
+<script>
+function exportResults() {
+    // Implementation for exporting results
+    alert('{% trans "Export functionality coming soon!" %}');
+}
+</script>
+{% endblock %}

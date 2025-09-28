@@ -1,37 +1,334 @@
-{% extends "core/base.html" %}
+{% extends "base.html" %}
 {% load i18n %}
-{% block title %}{% trans "Compare" %}{% endblock %}
+
+{% block title %}{% trans "Compare Symbols" %} - Shan's Web{% endblock %}
+
 {% block content %}
-  <h1>{% trans "Compare" %}: {{ symbols|join:", " }}</h1>
-  <img src="{{ chart_data_url }}" alt="Comparison chart" />
-  <table>
-    <thead>
-      <tr>
-        <th>{% trans "Symbol" %}</th>
-        <th>{% trans "CAGR" %}</th>
-        <th>{% trans "Volatility" %}</th>
-        <th>{% trans "Sharpe" %}</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for s, m in metrics.items %}
-      <tr>
-        <td>{{ s }}</td>
-        <td>{{ m.cagr|floatformat:2 }}</td>
-        <td>{{ m.volatility|floatformat:2 }}</td>
-        <td>{{ m.sharpe|floatformat:2 }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% if user.is_authenticated %}
-  <form method="post" action="/saved">
-    {% csrf_token %}
-    <input type="hidden" name="type" value="compare" />
-    <input type="hidden" name="symbols" value="{{ symbols|join:"," }}" />
-    <label>Name: <input type="text" name="name" /></label>
-    <button type="submit">Save compare set</button>
-  </form>
-  {% endif %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">{% trans "Compare Symbols" %}</h1>
+        
+        <!-- Symbol Input Form -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-search me-2"></i>{% trans "Enter Symbols to Compare" %}
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="get">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <input type="text" class="form-control" name="symbols" 
+                                   placeholder="{% trans 'Enter symbols separated by commas (e.g., AAPL,MSFT,GOOGL)' %}"
+                                   value="{% if symbols %}{{ symbols|join:',' }}{% endif %}">
+                        </div>
+                        <div class="col-md-4">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-balance-scale me-2"></i>{% trans "Compare" %}
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        {% if error %}
+        <div class="alert alert-danger" role="alert">
+            <i class="fas fa-exclamation-triangle me-2"></i>{{ error }}
+        </div>
+        {% endif %}
+        
+        {% if symbols and instruments_data %}
+        <!-- Comparison Results -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-bar me-2"></i>{% trans "Comparison Results" %}
+                        </h5>
+                        {% if user.is_authenticated %}
+                            <button class="btn btn-outline-primary btn-sm" onclick="saveComparison()">
+                                <i class="fas fa-bookmark me-2"></i>{% trans "Save Comparison" %}
+                            </button>
+                        {% endif %}
+                    </div>
+                    <div class="card-body">
+                        <!-- Company Information Table -->
+                        <div class="table-responsive mb-4">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>{% trans "Symbol" %}</th>
+                                        <th>{% trans "Company" %}</th>
+                                        <th>{% trans "Sector" %}</th>
+                                        <th>{% trans "Market Cap" %}</th>
+                                        <th>{% trans "Currency" %}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for symbol in symbols %}
+                                        {% if symbol in instruments_data %}
+                                            {% for key, data in instruments_data.items %}
+                                                {% if key == symbol %}
+                                            <tr>
+                                                <td><strong>{{ symbol }}</strong></td>
+                                                <td>{{ data.instrument.name }}</td>
+                                                <td>{{ data.instrument.sector|default:"N/A" }}</td>
+                                                <td>
+                                                    {% if data.instrument.market_cap %}
+                                                        ${{ data.instrument.market_cap|floatformat:0 }}
+                                                    {% else %}
+                                                        N/A
+                                                    {% endif %}
+                                                </td>
+                                                <td>{{ data.instrument.currency }}</td>
+                                            </tr>
+                                                {% endif %}
+                                            {% endfor %}
+                                        {% endif %}
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <!-- Performance Metrics Comparison -->
+                        {% if metrics %}
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>{% trans "Metric" %}</th>
+                                        {% for data in symbol_data %}
+                                            <th class="text-center">{{ data.symbol }}</th>
+                                        {% endfor %}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><strong>{% trans "CAGR (5Y)" %}</strong></td>
+                                        {% for data in symbol_data %}
+                                            {% if data.metrics.cagr %}
+                                                <td class="text-center">{{ data.metrics.cagr|floatformat:2 }}%</td>
+                                            {% else %}
+                                                <td class="text-center">-</td>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </tr>
+                                    <tr>
+                                        <td><strong>{% trans "Volatility" %}</strong></td>
+                                        {% for data in symbol_data %}
+                                            {% if data.metrics.volatility %}
+                                                <td class="text-center">{{ data.metrics.volatility|floatformat:2 }}%</td>
+                                            {% else %}
+                                                <td class="text-center">-</td>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </tr>
+                                    <tr>
+                                        <td><strong>{% trans "Sharpe Ratio" %}</strong></td>
+                                        {% for data in symbol_data %}
+                                            {% if data.metrics.sharpe_ratio %}
+                                                <td class="text-center">{{ data.metrics.sharpe_ratio|floatformat:2 }}</td>
+                                            {% else %}
+                                                <td class="text-center">-</td>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </tr>
+                                    <tr>
+                                        <td><strong>{% trans "Max Drawdown" %}</strong></td>
+                                        {% for data in symbol_data %}
+                                            {% if data.metrics.max_drawdown %}
+                                                <td class="text-center">{{ data.metrics.max_drawdown|floatformat:2 }}%</td>
+                                            {% else %}
+                                                <td class="text-center">-</td>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Correlation Matrix -->
+        {% if correlation_matrix %}
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-project-diagram me-2"></i>{% trans "Correlation Matrix" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th></th>
+                                        {% for symbol in symbols %}
+                                            <th class="text-center">{{ symbol }}</th>
+                                        {% endfor %}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for symbol1 in symbols %}
+                                        <tr>
+                                            <td><strong>{{ symbol1 }}</strong></td>
+                                            {% for symbol2 in symbols %}
+                                                <td class="text-center">
+                                                    {% if symbol1 == symbol2 %}
+                                                        <span class="badge bg-primary">1.00</span>
+                                                    {% else %}
+                                                        {% for corr_key, corr_value in correlation_matrix.items %}
+                                                            {% if corr_key == symbol1|add:"_"|add:symbol2 %}
+                                                                <span class="badge bg-{% if corr_value > 0.7 %}danger{% elif corr_value > 0.3 %}warning{% else %}success{% endif %}">
+                                                                    {{ corr_value|floatformat:2 }}
+                                                                </span>
+                                                            {% endif %}
+                                                        {% empty %}
+                                                            <span class="text-muted">-</span>
+                                                        {% endfor %}
+                                                    {% endif %}
+                                                </td>
+                                            {% endfor %}
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle me-1"></i>
+                            {% trans "Correlation values: Red (>0.7) = High, Yellow (0.3-0.7) = Medium, Green (<0.3) = Low" %}
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Price Charts -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-line me-2"></i>{% trans "Price Comparison Chart" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="comparisonChart" height="100"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
 {% endblock %}
 
+{% block extra_js %}
+{% if symbols and instruments_data %}
+<script>
+// Comparison Chart
+const ctx = document.getElementById('comparisonChart').getContext('2d');
+const datasets = [];
+
+{% for symbol in symbols %}
+    {% if symbol in instruments_data %}
+        {% for key, data in instruments_data.items %}
+            {% if key == symbol %}
+        datasets.push({
+            label: '{{ symbol }}',
+            data: [
+                {% for price in data.prices|slice:":50" %}
+                {
+                    x: '{{ price.date|date:"Y-m-d" }}',
+                    y: {{ price.close_price|floatformat:2 }}
+                }{% if not forloop.last %},{% endif %}
+                {% endfor %}
+            ].reverse(),
+            {% if forloop.counter0 == 0 %}
+            borderColor: 'hsl(0, 70%, 50%)',
+            backgroundColor: 'hsla(0, 70%, 50%, 0.1)',
+            {% elif forloop.counter0 == 1 %}
+            borderColor: 'hsl(60, 70%, 50%)',
+            backgroundColor: 'hsla(60, 70%, 50%, 0.1)',
+            {% elif forloop.counter0 == 2 %}
+            borderColor: 'hsl(120, 70%, 50%)',
+            backgroundColor: 'hsla(120, 70%, 50%, 0.1)',
+            {% elif forloop.counter0 == 3 %}
+            borderColor: 'hsl(180, 70%, 50%)',
+            backgroundColor: 'hsla(180, 70%, 50%, 0.1)',
+            {% elif forloop.counter0 == 4 %}
+            borderColor: 'hsl(240, 70%, 50%)',
+            backgroundColor: 'hsla(240, 70%, 50%, 0.1)',
+            {% else %}
+            borderColor: 'hsl(300, 70%, 50%)',
+            backgroundColor: 'hsla(300, 70%, 50%, 0.1)',
+            {% endif %}
+            tension: 0.1
+        });
+            {% endif %}
+        {% endfor %}
+    {% endif %}
+{% endfor %}
+
+new Chart(ctx, {
+    type: 'line',
+    data: { datasets: datasets },
+    options: {
+        responsive: true,
+        scales: {
+            x: {
+                type: 'time',
+                time: {
+                    unit: 'day'
+                }
+            },
+            y: {
+                beginAtZero: false
+            }
+        }
+    }
+});
+</script>
+{% endif %}
+
+{% if user.is_authenticated %}
+<script>
+function saveComparison() {
+    const symbols = '{{ symbols|join:"," }}';
+    const name = prompt('{% trans "Enter a name for this comparison:" %}');
+    
+    if (name) {
+        fetch('{% url "markets:save_compare_set" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: `symbols=${encodeURIComponent(symbols)}&name=${encodeURIComponent(name)}`
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('{% trans "Comparison saved successfully!" %}');
+            } else {
+                alert('{% trans "Error saving comparison:" %} ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('{% trans "Error saving comparison" %}');
+        });
+    }
+}
+</script>
+{% endif %}
+{% endblock %}
