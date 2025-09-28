@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: shans-web
+    env: python
+    plan: starter
+    region: oregon
+    buildCommand: |
+      pip install --upgrade pip
+      pip install .[dev]
+      python -m pip install 'psycopg[binary]'
+      python manage.py collectstatic --noinput
+    startCommand: gunicorn shans_web.wsgi:application --log-file - --bind 0.0.0.0:$PORT
+    envVars:
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_DEBUG
+        value: "0"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: shans-web-db
+          property: connectionString
+      - key: ALLOWED_HOSTS
+        value: "*"
+      - key: DEFAULT_RF
+        value: "0.03"
+    healthCheckPath: /healthz
+    autoDeploy: true
+
+databases:
+  - name: shans-web-db
+    plan: starter
+    region: oregon
+

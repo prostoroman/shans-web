@@ -1,0 +1,22 @@
+{% extends "core/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Portfolio results" %}{% endblock %}
+{% block content %}
+  <h1>{% trans "Results" %}</h1>
+  {% if saved_id %}
+    <p>{% trans "Saved portfolio ID" %}: {{ saved_id }}</p>
+  {% endif %}
+  <h2>{% trans "Min-variance weights" %}</h2>
+  <ul>
+    {% for k, v in weights_min.items %}
+      <li>{{ k }}: {{ v }}</li>
+    {% endfor %}
+  </ul>
+  <h2>{% trans "Tangency weights" %}</h2>
+  <ul>
+    {% for k, v in weights_tan.items %}
+      <li>{{ k }}: {{ v }}</li>
+    {% endfor %}
+  </ul>
+{% endblock %}
+

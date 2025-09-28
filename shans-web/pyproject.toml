@@ -1,0 +1,73 @@
+[build-system]
+requires = ["hatchling>=1.18.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "shans-web"
+version = "0.1.0"
+description = "Server-rendered Django app with DRF API for markets/portfolio analytics"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "Shans Web Team" }
+]
+dependencies = [
+  "Django>=5.0,<6.0",
+  "djangorestframework>=3.15,<4",
+  "django-environ>=0.11",
+  "django-allauth>=64",
+  "whitenoise>=6.6",
+  "requests>=2.32",
+  "httpx>=0.27",
+  "pandas>=2.2",
+  "numpy>=1.26",
+  "scipy>=1.12",
+  "matplotlib>=3.8",
+  "Pillow>=10.0",
+  "gunicorn>=21.2",
+  "python-dotenv>=1.0",
+  "django-crispy-forms>=2.3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-django>=4.8",
+  "ruff>=0.5.5",
+  "black>=24.8.0",
+  "mypy>=1.10",
+]
+
+[project.urls]
+Homepage = "https://example.com"
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+exclude = [
+  "/.venv",
+  "/.git",
+  "/node_modules",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-select = ["I"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["shans_web", "apps"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "shans_web.settings"
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_configs = true
+ignore_missing_imports = true
+exclude = [".venv", "node_modules", "migrations"]
+

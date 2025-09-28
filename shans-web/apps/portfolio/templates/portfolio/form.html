@@ -1,0 +1,16 @@
+{% extends "core/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Portfolio" %}{% endblock %}
+{% block content %}
+  <h1>{% trans "Portfolio analysis" %}</h1>
+  <form method="post" action="/portfolio/analyze">
+    {% csrf_token %}
+    <label>{% trans "Symbols (comma-separated)" %}</label>
+    <input type="text" name="symbols" placeholder="AAPL,MSFT,GOOG" />
+    <label>
+      <input type="checkbox" name="save" /> {% trans "Save to my portfolios" %}
+    </label>
+    <button type="submit">{% trans "Analyze" %}</button>
+  </form>
+{% endblock %}
+

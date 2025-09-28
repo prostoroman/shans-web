@@ -1,0 +1,14 @@
+{% extends "core/base.html" %}
+{% load i18n %}
+{% block title %}{{ inst.symbol }} - {{ inst.name }}{% endblock %}
+{% block content %}
+  <h1>{{ inst.symbol }} — {{ inst.name }}</h1>
+  <p>{% trans "Currency" %}: {{ inst.currency }}</p>
+  <img src="{{ chart_data_url }}" alt="Price chart" />
+  <ul>
+    <li>{% trans "CAGR" %}: {{ metrics.cagr|floatformat:2 }}</li>
+    <li>{% trans "Volatility" %}: {{ metrics.volatility|floatformat:2 }}</li>
+    <li>{% trans "Sharpe" %}: {{ metrics.sharpe|floatformat:2 }}</li>
+  </ul>
+{% endblock %}
+
