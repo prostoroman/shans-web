@@ -1,10 +1,10 @@
 """
-Market API views for DRF endpoints.
+Market API views for DRF v1 endpoints.
 """
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import status, serializers
 from django.http import JsonResponse
 from django.utils.translation import gettext_lazy as _
 import logging
@@ -12,16 +12,59 @@ import logging
 from apps.data.services import get_instrument_data
 from apps.markets.metrics import calculate_metrics
 from django.conf import settings
+from apps.core.throttling import PlanRateThrottle, BasicAnonThrottle
+from apps.data import fmp_client
 
+
+class HistoryAPIView(APIView):
+    """GET /api/v1/history/<symbol>?period=5y"""
+    throttle_classes = [PlanRateThrottle, BasicAnonThrottle]
+
+    def get(self, request, symbol: str = ""):
+        symbol = (symbol or request.GET.get('symbol', '')).upper()
+        period = request.GET.get('period', '5y')
+        try:
+            # Map period to days approx
+            years = 1
+            if period.endswith('y'):
+                years = int(period[:-1])
+            days = min(max(years * 365, 30), 3650)
+            # fetch series
+            from datetime import date, timedelta
+            end = date.today()
+            start = end - timedelta(days=days)
+            hist = fmp_client.get_price_series(symbol, start.isoformat(), end.isoformat())
+            prices = [
+                {"date": h.get('date'), "close": float(h.get('close'))}
+                for h in hist if h.get('date') and h.get('close') is not None
+            ]
+            return Response({"symbol": symbol, "prices": list(reversed(prices))})
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"Error in history API for {symbol}: {e}")
+            return Response({'error': _('Internal server error')}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class ETFHoldingsAPIView(APIView):
+    """GET /api/v1/etf/<symbol>/holdings"""
+    throttle_classes = [PlanRateThrottle, BasicAnonThrottle]
+
+    def get(self, request, symbol: str = ""):
+        symbol = (symbol or request.GET.get('symbol', '')).upper()
+        try:
+            data = fmp_client.get_etf_holdings(symbol)
+            return Response(data)
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"Error in etf holdings API for {symbol}: {e}")
+            return Response({'error': _('Internal server error')}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 logger = logging.getLogger(__name__)
 
 
 class MarketAPIView(APIView):
-    """Market data API endpoint."""
-    
-    def get(self, request):
-        """Get market data for a symbol."""
-        symbol = request.GET.get('symbol', '').upper()
+    """GET /api/v1/info/<symbol>; legacy GET /api/info/?symbol=..."""
+    throttle_classes = [PlanRateThrottle, BasicAnonThrottle]
+
+    def get(self, request, symbol: str = ""):
+        symbol = (symbol or request.GET.get('symbol', '')).upper()
         
         if not symbol:
             return Response(
@@ -53,38 +96,53 @@ class MarketAPIView(APIView):
             else:
                 metrics = {}
             
-            # Prepare response
+            # Sector percentiles using peers
+            peers = fmp_client.get_peers(symbol)[:20]
+            percentiles = {}
+            if fundamentals and peers:
+                # build peer metrics snapshot for PE, ROE, margin, D/E
+                import numpy as _np
+                values = {
+                    'pe': [], 'roe': [], 'margin': [], 'd2e': []
+                }
+                for peer in peers:
+                    km = fmp_client.get_key_metrics(peer) or {}
+                    values['pe'].append(float(km.get('peRatio') or km.get('pe') or 0) or 0)
+                    values['roe'].append(float(km.get('roe') or 0) or 0)
+                    values['margin'].append(float(km.get('netProfitMargin') or km.get('netProfitMarginTTM') or 0) or 0)
+                    values['d2e'].append(float(km.get('debtToEquity') or 0) or 0)
+                def pct(val, arr):
+                    arr = [x for x in arr if x and x == x]
+                    if not arr:
+                        return None
+                    rank = sum(1 for x in arr if x <= val)
+                    return round(100 * rank / len(arr))
+                percentiles = {
+                    'pe': pct(float(fundamentals.pe_ratio or 0), values['pe']),
+                    'roe': pct(float(fundamentals.roe or 0), values['roe']),
+                    'margin': pct(float(fundamentals.current_ratio or 0), values['margin']),
+                    'd2e': pct(float(fundamentals.debt_to_equity or 0), values['d2e']),
+                }
+
             response_data = {
-                'symbol': symbol,
-                'instrument': {
+                'profile': {
                     'name': instrument.name,
                     'exchange': instrument.exchange,
-                    'sector': instrument.sector,
-                    'industry': instrument.industry,
-                    'market_cap': instrument.market_cap,
                     'currency': instrument.currency,
                 },
-                'prices': [
-                    {
-                        'date': p.date.isoformat(),
-                        'open': float(p.open_price),
-                        'high': float(p.high_price),
-                        'low': float(p.low_price),
-                        'close': float(p.close_price),
-                        'volume': p.volume,
-                        'adjusted_close': float(p.adjusted_close) if p.adjusted_close else None,
-                    }
-                    for p in prices[:252]  # Last year
-                ],
-                'fundamentals': {
-                    'pe_ratio': float(fundamentals.pe_ratio) if fundamentals and fundamentals.pe_ratio else None,
-                    'pb_ratio': float(fundamentals.pb_ratio) if fundamentals and fundamentals.pb_ratio else None,
-                    'debt_to_equity': float(fundamentals.debt_to_equity) if fundamentals and fundamentals.debt_to_equity else None,
+                'quote': fmp_client.get_quote(symbol) or {},
+                'key_metrics': {
+                    'pe': float(fundamentals.pe_ratio) if fundamentals and fundamentals.pe_ratio else None,
+                    'pb': float(fundamentals.pb_ratio) if fundamentals and fundamentals.pb_ratio else None,
                     'roe': float(fundamentals.roe) if fundamentals and fundamentals.roe else None,
-                    'roa': float(fundamentals.roa) if fundamentals and fundamentals.roa else None,
-                    'current_ratio': float(fundamentals.current_ratio) if fundamentals and fundamentals.current_ratio else None,
-                } if fundamentals else None,
-                'metrics': metrics,
+                    'margin': float(fundamentals.current_ratio) if fundamentals and fundamentals.current_ratio else None,
+                    'd2e': float(fundamentals.debt_to_equity) if fundamentals and fundamentals.debt_to_equity else None,
+                },
+                'compact_ratios': {
+                    'pe': float(fundamentals.pe_ratio) if fundamentals and fundamentals.pe_ratio else None,
+                    'pb': float(fundamentals.pb_ratio) if fundamentals and fundamentals.pb_ratio else None,
+                },
+                'percentiles': percentiles,
             }
             
             return Response(response_data)
@@ -98,26 +156,19 @@ class MarketAPIView(APIView):
 
 
 class CompareAPIView(APIView):
-    """Compare symbols API endpoint."""
-    
-    def get(self, request):
-        """Compare multiple symbols."""
-        symbols = request.GET.get('symbols', '')
-        
-        if not symbols:
-            return Response(
-                {'error': _('Symbols parameter is required')},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Parse symbols
-        symbol_list = [s.strip().upper() for s in symbols.split(',') if s.strip()]
-        
-        if len(symbol_list) < 2:
-            return Response(
-                {'error': _('At least 2 symbols are required for comparison')},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+    """POST /api/v1/compare; legacy GET returns 400 for missing symbols"""
+    throttle_classes = [PlanRateThrottle, BasicAnonThrottle]
+
+    class Payload(serializers.Serializer):
+        symbols = serializers.ListField(child=serializers.CharField(max_length=12), min_length=2, max_length=5)
+
+    def post(self, request):
+        payload = self.Payload(data=request.data)
+        payload.is_valid(raise_exception=True)
+        symbol_list = [s.upper() for s in payload.validated_data['symbols']]
+
+        if not symbol_list:
+            return Response({'error': _('Symbols parameter is required')}, status=status.HTTP_400_BAD_REQUEST)
         
         try:
             # Get data for all symbols
@@ -149,29 +200,39 @@ class CompareAPIView(APIView):
                             # In a real implementation, you'd align the price series
                             correlation_matrix[f"{symbol1}_{symbol2}"] = 0.5  # Placeholder
             
-            # Prepare response
+            # Prepare response: 5 KPIs per symbol
+            compare_data = {}
+            for symbol in symbol_list:
+                m = all_metrics.get(symbol, {})
+                km = fmp_client.get_key_metrics(symbol) or {}
+                compare_data[symbol] = {
+                    'cagr_5y': m.get('cagr'),
+                    'vol': m.get('volatility'),
+                    'maxdd': m.get('max_drawdown'),
+                    'sharpe': m.get('sharpe_ratio'),
+                    'valuation': {
+                        'pe': km.get('peRatio') or km.get('pe'),
+                        'pb': km.get('priceToBookRatio') or km.get('pb'),
+                    },
+                    'mini': {
+                        'pe_percentile': None,
+                        'roe_percentile': None,
+                    }
+                }
             response_data = {
                 'symbols': symbol_list,
-                'instruments': {
-                    symbol: {
-                        'name': data['instrument'].name,
-                        'exchange': data['instrument'].exchange,
-                        'sector': data['instrument'].sector,
-                        'industry': data['instrument'].industry,
-                        'market_cap': data['instrument'].market_cap,
-                        'currency': data['instrument'].currency,
-                    }
-                    for symbol, data in instruments_data.items()
-                },
-                'metrics': all_metrics,
+                'kpis': compare_data,
                 'correlation_matrix': correlation_matrix,
             }
             
             return Response(response_data)
             
         except Exception as e:
-            logger.error(f"Error in compare API for {symbols}: {e}")
+            logger.error(f"Error in compare API for {symbol_list}: {e}")
             return Response(
                 {'error': _('Internal server error')},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+    def get(self, request):
+        return Response({'error': _('Symbols parameter is required')}, status=status.HTTP_400_BAD_REQUEST)

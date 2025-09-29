@@ -4,7 +4,7 @@ Portfolio API views for DRF endpoints.
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import status, serializers
 from rest_framework.permissions import IsAuthenticated
 from django.utils.translation import gettext_lazy as _
 import logging
@@ -18,20 +18,29 @@ from .forecast import calculate_portfolio_forecast
 from .llm import generate_portfolio_commentary
 from apps.data.services import get_instrument_data
 from django.conf import settings
+from apps.core.throttling import PlanRateThrottle, BasicAnonThrottle
+from apps.analytics.metrics import diversification_score
 
 logger = logging.getLogger(__name__)
 
 
 class PortfolioAnalyzeAPIView(APIView):
-    """Portfolio analysis API endpoint."""
-    
+    """POST /api/v1/portfolio/analyze"""
+    throttle_classes = [PlanRateThrottle, BasicAnonThrottle]
+
+    class Payload(serializers.Serializer):
+        weights = serializers.DictField(child=serializers.FloatField(min_value=0.0))
+        benchmark = serializers.CharField(required=False, allow_blank=True)
+
     def post(self, request):
         """Analyze a portfolio."""
         try:
-            # Get request data
-            symbols = request.data.get('symbols', [])
-            weights = request.data.get('weights', [])
-            analysis_type = request.data.get('analysis_type', 'basic')
+            payload = self.Payload(data=request.data)
+            payload.is_valid(raise_exception=True)
+            weights_map = payload.validated_data['weights']
+            symbols = list(weights_map.keys())
+            weights = list(weights_map.values())
+            analysis_type = 'basic'
             
             if not symbols or not weights:
                 return Response(
@@ -114,28 +123,27 @@ class PortfolioAnalyzeAPIView(APIView):
                     weights, aligned_returns, periods=30, method='ewma'
                 )
             
-            # Generate LLM commentary
-            commentary = None
-            if request.user.is_authenticated:
-                user_plan = request.user.profile.status
-                portfolio_data = {
-                    'positions': [
-                        {'symbol': symbol, 'weight': weight}
-                        for symbol, weight in zip(symbols, weights)
-                    ],
-                    'metrics': current_metrics,
-                    'optimization': optimization_results,
-                }
-                commentary = generate_portfolio_commentary(portfolio_data, user_plan)
+            # Diversification score (corr matrix simple proxy using cov -> corr)
+            corr = []
+            for i in range(len(weights)):
+                row = []
+                for j in range(len(weights)):
+                    try:
+                        row.append(cov_matrix[i][j] / ((cov_matrix[i][i] ** 0.5) * (cov_matrix[j][j] ** 0.5)))
+                    except Exception:
+                        row.append(0.0)
+                corr.append(row)
+            div_score = diversification_score(corr)
             
             # Prepare response
             response_data = {
                 'symbols': symbols,
-                'weights': weights,
+                'weights': {s: w for s, w in zip(symbols, weights)},
                 'current_metrics': current_metrics,
                 'optimization_results': optimization_results,
                 'forecast_results': forecast_results,
-                'commentary': commentary,
+                'diversification_score': div_score,
+                'rebalance': 'Consider trimming the overweight, highly correlated asset to improve Sharpe.',
             }
             
             return Response(response_data)

@@ -128,7 +128,10 @@
                             <a href="{% url 'markets:info' %}" class="btn btn-info">
                                 <i class="fas fa-chart-line me-2"></i>{% trans "Stock Analysis" %}
                             </a>
-                            <a href="{% url 'activity:activity_saved' %}" class="btn btn-outline-secondary">
+                            <a href="{% url 'activity:history' %}" class="btn btn-outline-secondary">
+                                <i class="fas fa-history me-2"></i>{% trans "View History" %}
+                            </a>
+                            <a href="{% url 'activity:saved' %}" class="btn btn-outline-secondary">
                                 <i class="fas fa-bookmark me-2"></i>{% trans "View Saved" %}
                             </a>
                         </div>
