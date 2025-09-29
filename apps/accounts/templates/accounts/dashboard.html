@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load i18n %}
 
-{% block title %}{% trans "Dashboard" %} - Shan's Web{% endblock %}
+{% block title %}{% trans "Dashboard" %} - shans.ai{% endblock %}
 
 {% block content %}
 <div class="row">
@@ -128,7 +128,7 @@
                             <a href="{% url 'markets:info' %}" class="btn btn-info">
                                 <i class="fas fa-chart-line me-2"></i>{% trans "Stock Analysis" %}
                             </a>
-                            <a href="{% url 'activity:saved' %}" class="btn btn-outline-secondary">
+                            <a href="{% url 'activity:activity_saved' %}" class="btn btn-outline-secondary">
                                 <i class="fas fa-bookmark me-2"></i>{% trans "View Saved" %}
                             </a>
                         </div>

@@ -63,6 +63,72 @@ class Instrument(models.Model):
     
     def __str__(self):
         return f"{self.symbol} - {self.name}"
+    
+    def get_currency_symbol(self):
+        """Get currency symbol for display."""
+        currency_symbols = {
+            'USD': '$',
+            'EUR': '€',
+            'GBP': '£',
+            'JPY': '¥',
+            'CAD': 'C$',
+            'AUD': 'A$',
+            'CHF': 'CHF',
+            'CNY': '¥',
+            'RUB': '₽',
+            'INR': '₹',
+            'KRW': '₩',
+            'SEK': 'kr',
+            'NOK': 'kr',
+            'DKK': 'kr',
+            'PLN': 'zł',
+            'CZK': 'Kč',
+            'HUF': 'Ft',
+            'BRL': 'R$',
+            'MXN': '$',
+            'SGD': 'S$',
+            'HKD': 'HK$',
+            'NZD': 'NZ$',
+            'ZAR': 'R',
+            'ILS': '₪',
+            'AED': 'د.إ',
+            'SAR': '﷼',
+            'QAR': '﷼',
+            'KWD': 'د.ك',
+            'BHD': 'د.ب',
+            'OMR': '﷼',
+            'JOD': 'د.ا',
+        }
+        return currency_symbols.get(self.currency, self.currency)
+    
+    def get_market_cap_formatted(self):
+        """Get formatted market cap with currency symbol and unit abbreviations."""
+        if not self.market_cap:
+            return 'N/A'
+        
+        symbol = self.get_currency_symbol()
+        num = float(self.market_cap)
+        
+        if num >= 1_000_000_000_000:
+            return f"{symbol}{num / 1_000_000_000_000:.2f}T"
+        elif num >= 1_000_000_000:
+            return f"{symbol}{num / 1_000_000_000:.2f}B"
+        elif num >= 1_000_000:
+            return f"{symbol}{num / 1_000_000:.2f}M"
+        elif num >= 1_000:
+            return f"{symbol}{num / 1_000:.2f}K"
+        else:
+            return f"{symbol}{num:,.2f}"
+    
+    @property
+    def currency_symbol(self):
+        """Property for accessing currency symbol in templates."""
+        return self.get_currency_symbol()
+    
+    @property
+    def market_cap_formatted(self):
+        """Property for accessing formatted market cap in templates."""
+        return self.get_market_cap_formatted()
 
 
 class PriceOHLC(models.Model):
@@ -120,6 +186,30 @@ class PriceOHLC(models.Model):
     
     def __str__(self):
         return f"{self.instrument.symbol} - {self.date}"
+    
+    @property
+    def open_price_formatted(self):
+        """Get formatted open price with currency symbol."""
+        symbol = self.instrument.get_currency_symbol()
+        return f"{symbol}{float(self.open_price):,.2f}"
+    
+    @property
+    def high_price_formatted(self):
+        """Get formatted high price with currency symbol."""
+        symbol = self.instrument.get_currency_symbol()
+        return f"{symbol}{float(self.high_price):,.2f}"
+    
+    @property
+    def low_price_formatted(self):
+        """Get formatted low price with currency symbol."""
+        symbol = self.instrument.get_currency_symbol()
+        return f"{symbol}{float(self.low_price):,.2f}"
+    
+    @property
+    def close_price_formatted(self):
+        """Get formatted close price with currency symbol."""
+        symbol = self.instrument.get_currency_symbol()
+        return f"{symbol}{float(self.close_price):,.2f}"
 
 
 class Fundamentals(models.Model):

@@ -6,24 +6,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="{% block meta_description %}Professional financial analysis, portfolio optimization, and market insights.{% endblock %}">
     <meta name="keywords" content="{% block meta_keywords %}financial analysis, portfolio optimization, stock analysis, market data{% endblock %}">
-    <meta name="author" content="Shan's Web">
+    <meta name="author" content="shans.ai">
     
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="{{ request.build_absolute_uri }}">
-    <meta property="og:title" content="{% block og_title %}Shan's Web{% endblock %}">
+    <meta property="og:title" content="{% block og_title %}shans.ai{% endblock %}">
     <meta property="og:description" content="{% block og_description %}Professional financial analysis, portfolio optimization, and market insights.{% endblock %}">
     
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image">
     <meta property="twitter:url" content="{{ request.build_absolute_uri }}">
-    <meta property="twitter:title" content="{% block twitter_title %}Shan's Web{% endblock %}">
+    <meta property="twitter:title" content="{% block twitter_title %}shans.ai{% endblock %}">
     <meta property="twitter:description" content="{% block twitter_description %}Professional financial analysis, portfolio optimization, and market insights.{% endblock %}">
     
     <!-- Canonical URL -->
     <link rel="canonical" href="{{ request.build_absolute_uri }}">
     
-    <title>{% block title %}Shan's Web - Financial Analysis Platform{% endblock %}</title>
+    <title>{% block title %}shans.ai - Financial Analysis Platform{% endblock %}</title>
     
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -40,7 +40,7 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container">
             <a class="navbar-brand" href="{% url 'core:home' %}">
-                <img src="{% static 'images/shans-logo.png' %}" alt="Shan's Web" height="32" class="me-2">Shan's Web
+                <img src="{% static 'images/shans-logo.svg' %}" alt="shans.ai" height="32" class="me-2">shans.ai
             </a>
             
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -76,13 +76,13 @@
                                 <li><a class="dropdown-item" href="{% url 'accounts:dashboard' %}">
                                     <i class="fas fa-tachometer-alt me-2"></i>{% trans "Dashboard" %}
                                 </a></li>
-                                <li><a class="dropdown-item" href="{% url 'accounts:profile' %}">
+                                <li><a class="dropdown-item" href="{% url 'accounts:account_profile' %}">
                                     <i class="fas fa-user-cog me-2"></i>{% trans "Profile" %}
                                 </a></li>
-                                <li><a class="dropdown-item" href="{% url 'activity:history' %}">
+                                <li><a class="dropdown-item" href="{% url 'activity:activity_history' %}">
                                     <i class="fas fa-history me-2"></i>{% trans "History" %}
                                 </a></li>
-                                <li><a class="dropdown-item" href="{% url 'activity:saved' %}">
+                                <li><a class="dropdown-item" href="{% url 'activity:activity_saved' %}">
                                     <i class="fas fa-bookmark me-2"></i>{% trans "Saved" %}
                                 </a></li>
                                 <li><hr class="dropdown-divider"></li>
@@ -143,7 +143,7 @@
         <div class="container">
             <div class="row">
                 <div class="col-md-6">
-                    <h5>{% trans "Shan's Web" %}</h5>
+                    <h5>{% trans "shans.ai" %}</h5>
                     <p class="mb-0">{% trans "Professional financial analysis and portfolio optimization." %}</p>
                 </div>
                 <div class="col-md-6 text-md-end">
@@ -159,8 +159,10 @@
     
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Chart.js 3.x for compatibility -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <!-- Chart.js Date Adapter for time scales -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@2.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     
     {% block extra_js %}{% endblock %}
 </body>

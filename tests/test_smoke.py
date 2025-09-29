@@ -25,7 +25,7 @@ class SmokeTests(TestCase):
         """Test that the home page loads successfully."""
         response = self.client.get(reverse('core:home'))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Shan's Web")
+        self.assertContains(response, "shans.ai")
     
     def test_health_check(self):
         """Test that the health check endpoint works."""

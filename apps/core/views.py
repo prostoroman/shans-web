@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 def home(request):
     """Home page view."""
     context = {
-        'title': _('Shan\'s Web - Financial Analysis Platform'),
+        'title': _('shans.ai - Financial Analysis Platform'),
         'description': _('Professional financial analysis, portfolio optimization, and market insights.'),
     }
     return render(request, 'core/home.html', context)

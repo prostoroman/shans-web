@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{% block title %}Shans Web{% endblock %}</title>
+    <title>{% block title %}shans.ai{% endblock %}</title>
     <link rel="canonical" href="{{ request.build_absolute_uri }}" />
     <meta name="robots" content="index,follow" />
     {% load i18n %}
@@ -28,7 +28,7 @@
       {% block content %}{% endblock %}
     </main>
     <footer>
-      <small>&copy; {{ now|default:2025 }} Shans Web</small>
+      <small>&copy; {{ now|default:2025 }} shans.ai</small>
     </footer>
   </body>
   </html>

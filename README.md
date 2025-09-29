@@ -1,4 +1,4 @@
-# Shan's Web - Financial Analysis Platform
+# shans.ai - Financial Analysis Platform
 
 A production-ready Django 5.x application for financial analysis, portfolio optimization, and market insights.
 
@@ -219,7 +219,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Support
 
-For support, email support@shans-web.com or create an issue on GitHub.
+For support, email support@shans.ai or create an issue on GitHub.
 
 ## Roadmap
 

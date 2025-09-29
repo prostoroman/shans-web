@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load i18n %}
 
-{% block title %}{% trans "Compare Symbols" %} - Shan's Web{% endblock %}
+{% block title %}{% trans "Compare Symbols" %} - shans.ai{% endblock %}
 
 {% block content %}
 <div class="row">
@@ -77,11 +77,7 @@
                                                 <td>{{ data.instrument.name }}</td>
                                                 <td>{{ data.instrument.sector|default:"N/A" }}</td>
                                                 <td>
-                                                    {% if data.instrument.market_cap %}
-                                                        ${{ data.instrument.market_cap|floatformat:0 }}
-                                                    {% else %}
-                                                        N/A
-                                                    {% endif %}
+                                                    {{ data.instrument.market_cap_formatted|default:"N/A" }}
                                                 </td>
                                                 <td>{{ data.instrument.currency }}</td>
                                             </tr>
@@ -222,7 +218,9 @@
                         </h5>
                     </div>
                     <div class="card-body">
-                        <canvas id="comparisonChart" height="100"></canvas>
+                        <div style="height: 400px;">
+                            <canvas id="comparisonChart"></canvas>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -279,24 +277,81 @@ const datasets = [];
     {% endif %}
 {% endfor %}
 
-new Chart(ctx, {
-    type: 'line',
-    data: { datasets: datasets },
-    options: {
-        responsive: true,
-        scales: {
-            x: {
-                type: 'time',
-                time: {
-                    unit: 'day'
+// Initialize comparison chart
+
+// Get currency from first symbol data
+let chartCurrency = 'USD';
+{% for symbol in symbols %}
+    {% if symbol in instruments_data %}
+        {% for key, data in instruments_data.items %}
+            {% if key == symbol %}
+chartCurrency = '{{ data.instrument.currency_symbol }}';
+            {% endif %}
+        {% endfor %}
+        {# Only process first matching symbol - we'll continue but won't update chartCurrency again #}
+    {% endif %}
+{% endfor %}
+
+// Ensure Chart.js is loaded and we have data
+if (typeof Chart !== 'undefined' && datasets.length > 0) {
+    new Chart(ctx, {
+        type: 'line',
+        data: { datasets: datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            },
+            scales: {
+                x: {
+                    type: 'time',
+                    time: {
+                        unit: 'day',
+                        displayFormats: {
+                            day: 'MMM dd'
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: '{% trans "Date" %}'
+                    }
+                },
+                y: {
+                    beginAtZero: false,
+                    title: {
+                        display: true,
+                        text: '{% trans "Price" %} (' + chartCurrency + ')'
+                    }
                 }
             },
-            y: {
-                beginAtZero: false
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top'
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        label: function(context) {
+                            return context.dataset.label + ': ' + chartCurrency + context.parsed.y.toFixed(2);
+                        }
+                    }
+                }
             }
         }
+    });
+} else {
+    if (datasets.length === 0) {
+        console.error('No datasets available for comparison chart');
+        document.getElementById('comparisonChart').innerHTML = '<p class="text-center text-muted">{% trans "No data available for comparison" %}</p>';
+    } else if (typeof Chart === 'undefined') {
+        console.error('Chart.js is not loaded');
+        document.getElementById('comparisonChart').innerHTML = '<p class="text-center text-muted">{% trans "Chart library not loaded" %}</p>';
     }
-});
+}
 </script>
 {% endif %}
 

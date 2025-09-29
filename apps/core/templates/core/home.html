@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% load i18n %}
 
-{% block title %}{% trans "Home" %} - Shan's Web{% endblock %}
+{% block title %}{% trans "Home" %} - shans.ai{% endblock %}
 
 {% block meta_description %}{% trans "Professional financial analysis, portfolio optimization, and market insights. Analyze stocks, compare investments, and optimize your portfolio with advanced tools." %}{% endblock %}
 
 {% block content %}
 <div class="row">
     <div class="col-lg-8 mx-auto text-center">
-        <h1 class="display-4 mb-4">{% trans "Welcome to Shan's Web" %}</h1>
+        <h1 class="display-4 mb-4">{% trans "Welcome to shans.ai" %}</h1>
         <p class="lead mb-4">
             {% trans "Professional financial analysis, portfolio optimization, and market insights. Make informed investment decisions with our comprehensive tools." %}
         </p>
@@ -91,17 +91,17 @@
                 </a>
             </div>
             <div class="col-md-3">
-                <a href="{% url 'activity:history' %}" class="btn btn-outline-secondary w-100">
+                <a href="{% url 'activity:activity_history' %}" class="btn btn-outline-secondary w-100">
                     <i class="fas fa-history me-2"></i>{% trans "View History" %}
                 </a>
             </div>
             <div class="col-md-3">
-                <a href="{% url 'activity:saved' %}" class="btn btn-outline-info w-100">
+                <a href="{% url 'activity:activity_saved' %}" class="btn btn-outline-info w-100">
                     <i class="fas fa-bookmark me-2"></i>{% trans "Saved Sets" %}
                 </a>
             </div>
             <div class="col-md-3">
-                <a href="{% url 'accounts:profile' %}" class="btn btn-outline-success w-100">
+                <a href="{% url 'accounts:account_profile' %}" class="btn btn-outline-success w-100">
                     <i class="fas fa-user-cog me-2"></i>{% trans "Profile" %}
                 </a>
             </div>
