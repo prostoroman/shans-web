@@ -12,5 +12,7 @@ urlpatterns = [
     path('info/<str:symbol>/', views.info, name='info_symbol'),
     path('compare/', views.compare, name='compare'),
     path('compare/<str:symbols>/', views.compare, name='compare_symbols'),
+    path('debug-compare/', views.debug_compare, name='debug_compare'),
+    path('debug-compare/<str:symbols>/', views.debug_compare, name='debug_compare_symbols'),
     path('save-compare/', views.save_compare_set, name='save_compare_set'),
 ]

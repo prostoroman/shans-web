@@ -1,32 +1,151 @@
 {% extends "base.html" %}
 {% load i18n %}
+{% load markets_extras %}
 
-{% block title %}{% trans "Compare Symbols" %} - shans.ai{% endblock %}
+{% block title %}{% trans "Compare Assets" %} - shans.ai{% endblock %}
 
 {% block content %}
 <div class="row">
     <div class="col-12">
-        <h1 class="mb-4">{% trans "Compare Symbols" %}</h1>
+        <h1 class="mb-4">{% trans "Compare Assets" %}</h1>
         
-        <!-- Symbol Input Form -->
+        <!-- Asset Input Form -->
         <div class="card mb-4">
             <div class="card-header">
                 <h5 class="mb-0">
-                    <i class="fas fa-search me-2"></i>{% trans "Enter Symbols to Compare" %}
+                    <i class="fas fa-search me-2"></i>{% trans "Enter Assets to Compare" %}
                 </h5>
             </div>
             <div class="card-body">
-                <form method="get">
-                    <div class="row">
+                <form method="get" id="comparisonForm">
+                    <!-- Symbol Selection Container -->
+                    <div class="row mb-3">
                         <div class="col-md-8">
-                            <input type="text" class="form-control" name="symbols" 
-                                   placeholder="{% trans 'Enter symbols separated by commas (e.g., AAPL,MSFT,GOOGL)' %}"
-                                   value="{% if symbols %}{{ symbols|join:',' }}{% endif %}">
+                            <div class="symbol-input-container" id="symbolDropdownContainer">
+                                <!-- Selected Symbols Display -->
+                                <div class="selected-symbols mb-2" id="selectedSymbols">
+                                    {% if symbols %}
+                                        {% for symbol in symbols %}
+                                            <span class="symbol-tag" data-symbol="{{ symbol }}">
+                                                <span class="symbol-text">{{ symbol }}</span>
+                                                <button type="button" class="symbol-remove" onclick="removeSymbol('{{ symbol }}')">
+                                                    <i class="fas fa-times"></i>
+                                                </button>
+                                            </span>
+                                        {% endfor %}
+                                    {% endif %}
+                                </div>
+                                
+                                <!-- Search Input -->
+                                <div class="position-relative">
+                                    <input type="text" 
+                                           class="form-control symbol-search-input" 
+                                           id="symbolSearchInput"
+                                           placeholder="{% trans 'Search for stocks, ETFs, commodities, crypto, or forex...' %}"
+                                           autocomplete="off">
+                                    <div class="search-loading d-none" id="searchLoading">
+                                        <i class="fas fa-spinner fa-spin"></i>
+                                    </div>
+                                    
+                                    <!-- Search Results Dropdown -->
+                                    <div class="search-results dropdown-menu w-100" id="searchResults" style="display: none;">
+                                        <!-- Exchange Filter Buttons -->
+                                        <div class="search-filters" id="searchFilters" style="display: none;">
+                                            <div class="filter-buttons" id="filterButtons">
+                                                <button type="button" class="filter-btn active" data-exchange="all">All</button>
+                                            </div>
+                                        </div>
+                                        <div class="search-results-content" id="searchResultsContent">
+                                            <!-- Results will be populated here -->
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Hidden input for form submission -->
+                                <input type="hidden" name="symbols" id="symbolsInput" value="{% if symbols %}{{ symbols|join:',' }}{% endif %}">
+                                
+                                <!-- Hidden input to always include dividends -->
+                                <input type="hidden" name="include_dividends" value="true">
+                                
+                            </div>
                         </div>
                         <div class="col-md-4">
-                            <button type="submit" class="btn btn-primary w-100">
+                            <button type="submit" class="btn btn-primary w-100" id="compareButton">
                                 <i class="fas fa-balance-scale me-2"></i>{% trans "Compare" %}
                             </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Advanced Options -->
+                    <div class="row">
+                        <div class="col-md-3">
+                            <label for="base_currency" class="form-label">{% trans "Base Currency" %}</label>
+                            <select class="form-select" name="base_currency" id="base_currency">
+                                <!-- Major Currencies -->
+                                <optgroup label="{% trans 'Major Currencies' %}">
+                                    <option value="USD" {% if base_currency == 'USD' %}selected{% endif %}>USD - US Dollar</option>
+                                    <option value="EUR" {% if base_currency == 'EUR' %}selected{% endif %}>EUR - Euro</option>
+                                    <option value="GBP" {% if base_currency == 'GBP' %}selected{% endif %}>GBP - British Pound</option>
+                                    <option value="JPY" {% if base_currency == 'JPY' %}selected{% endif %}>JPY - Japanese Yen</option>
+                                    <option value="CHF" {% if base_currency == 'CHF' %}selected{% endif %}>CHF - Swiss Franc</option>
+                                </optgroup>
+                                
+                                <!-- North America -->
+                                <optgroup label="{% trans 'North America' %}">
+                                    <option value="CAD" {% if base_currency == 'CAD' %}selected{% endif %}>CAD - Canadian Dollar</option>
+                                    <option value="MXN" {% if base_currency == 'MXN' %}selected{% endif %}>MXN - Mexican Peso</option>
+                                </optgroup>
+                                
+                                <!-- Asia Pacific -->
+                                <optgroup label="{% trans 'Asia Pacific' %}">
+                                    <option value="AUD" {% if base_currency == 'AUD' %}selected{% endif %}>AUD - Australian Dollar</option>
+                                    <option value="NZD" {% if base_currency == 'NZD' %}selected{% endif %}>NZD - New Zealand Dollar</option>
+                                    <option value="CNY" {% if base_currency == 'CNY' %}selected{% endif %}>CNY - Chinese Yuan</option>
+                                    <option value="KRW" {% if base_currency == 'KRW' %}selected{% endif %}>KRW - South Korean Won</option>
+                                    <option value="SGD" {% if base_currency == 'SGD' %}selected{% endif %}>SGD - Singapore Dollar</option>
+                                    <option value="HKD" {% if base_currency == 'HKD' %}selected{% endif %}>HKD - Hong Kong Dollar</option>
+                                    <option value="INR" {% if base_currency == 'INR' %}selected{% endif %}>INR - Indian Rupee</option>
+                                </optgroup>
+                                
+                                <!-- Europe -->
+                                <optgroup label="{% trans 'Europe' %}">
+                                    <option value="SEK" {% if base_currency == 'SEK' %}selected{% endif %}>SEK - Swedish Krona</option>
+                                    <option value="NOK" {% if base_currency == 'NOK' %}selected{% endif %}>NOK - Norwegian Krone</option>
+                                    <option value="DKK" {% if base_currency == 'DKK' %}selected{% endif %}>DKK - Danish Krone</option>
+                                    <option value="PLN" {% if base_currency == 'PLN' %}selected{% endif %}>PLN - Polish Zloty</option>
+                                    <option value="CZK" {% if base_currency == 'CZK' %}selected{% endif %}>CZK - Czech Koruna</option>
+                                    <option value="HUF" {% if base_currency == 'HUF' %}selected{% endif %}>HUF - Hungarian Forint</option>
+                                    <option value="RUB" {% if base_currency == 'RUB' %}selected{% endif %}>RUB - Russian Ruble</option>
+                                </optgroup>
+                                
+                                <!-- Other Regions -->
+                                <optgroup label="{% trans 'Other Regions' %}">
+                                    <option value="BRL" {% if base_currency == 'BRL' %}selected{% endif %}>BRL - Brazilian Real</option>
+                                    <option value="ZAR" {% if base_currency == 'ZAR' %}selected{% endif %}>ZAR - South African Rand</option>
+                                    <option value="TRY" {% if base_currency == 'TRY' %}selected{% endif %}>TRY - Turkish Lira</option>
+                                </optgroup>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="period" class="form-label">{% trans "Analysis Period" %}</label>
+                            <select class="form-select" name="period" id="period">
+                                <option value="1M" {% if period == '1M' %}selected{% endif %}>{% trans "1 Month" %}</option>
+                                <option value="3M" {% if period == '3M' %}selected{% endif %}>{% trans "3 Months" %}</option>
+                                <option value="6M" {% if period == '6M' %}selected{% endif %}>{% trans "6 Months" %}</option>
+                                <option value="YTD" {% if period == 'YTD' %}selected{% endif %}>{% trans "Year to Date" %}</option>
+                                <option value="1Y" {% if period == '1Y' %}selected{% endif %}>{% trans "1 Year" %}</option>
+                                <option value="3Y" {% if period == '3Y' %}selected{% endif %}>{% trans "3 Years" %}</option>
+                                <option value="5Y" {% if period == '5Y' %}selected{% endif %}>{% trans "5 Years" %}</option>
+                                <option value="10Y" {% if period == '10Y' %}selected{% endif %}>{% trans "10 Years" %}</option>
+                                <option value="MAX" {% if period == 'MAX' %}selected{% endif %}>{% trans "Maximum" %}</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="normalize_mode" class="form-label">{% trans "Comparison Mode" %}</label>
+                            <select class="form-select" name="normalize_mode" id="normalize_mode">
+                                <option value="index100" {% if normalize_mode == 'index100' %}selected{% endif %}>{% trans "Index" %}</option>
+                                <option value="percent_change" {% if normalize_mode == 'percent_change' %}selected{% endif %}>{% trans "% from start" %}</option>
+                            </select>
                         </div>
                     </div>
                 </form>
@@ -39,7 +158,42 @@
         </div>
         {% endif %}
         
-        {% if symbols and instruments_data %}
+        {% if failed_symbols %}
+        <div class="alert alert-warning" role="alert">
+            <i class="fas fa-exclamation-circle me-2"></i>
+            <strong>{% trans "Some symbols could not be loaded:" %}</strong> {{ failed_symbols|join:", " }}
+            <br>
+            <small>{% trans "Comparison will continue with available symbols." %}</small>
+        </div>
+        {% endif %}
+        
+        
+        {% if symbols and comparison_result.chart_data %}
+        <!-- Investment Performance Chart -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-line me-2"></i>{% trans "Investment Performance Chart" %}
+                        </h5>
+                        <small class="text-muted">
+                            {% if normalize_mode == 'index100' %}
+                                {% trans "Shows normalized performance starting at 1000 for each asset. Data includes dividends and is converted to" %} {{ base_currency }}.
+                            {% else %}
+                                {% trans "Shows percentage change from the start of the period. Data includes dividends and represents the returns of an invested amount in" %} {{ base_currency }}.
+                            {% endif %}
+                        </small>
+                    </div>
+                    <div class="card-body">
+                        <div style="height: 400px;">
+                            <canvas id="comparisonChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
         <!-- Comparison Results -->
         <div class="row mb-4">
             <div class="col-12">
@@ -55,34 +209,56 @@
                         {% endif %}
                     </div>
                     <div class="card-body">
-                        <!-- Company Information Table -->
+                        <!-- Asset Information Table -->
                         <div class="table-responsive mb-4">
                             <table class="table table-striped">
                                 <thead>
                                     <tr>
                                         <th>{% trans "Symbol" %}</th>
-                                        <th>{% trans "Company" %}</th>
-                                        <th>{% trans "Sector" %}</th>
+                                        <th>{% trans "Name" %}</th>
+                                        <th>{% trans "Type" %}</th>
+                                        <th>{% trans "Current Price" %}</th>
                                         <th>{% trans "Market Cap" %}</th>
                                         <th>{% trans "Currency" %}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for symbol in symbols %}
-                                        {% if symbol in instruments_data %}
-                                            {% for key, data in instruments_data.items %}
-                                                {% if key == symbol %}
+                                        {% if symbol in comparison_result.successful_symbols %}
+                                            <!-- Debug: Check assets structure -->
+                                            <!-- Assets type: {{ comparison_result.assets|default:"None" }} -->
+                                            <!-- Assets keys: {{ comparison_result.assets.keys|default:"No keys" }} -->
+                                            {% with asset_info=comparison_result.assets|lookup:symbol %}
                                             <tr>
                                                 <td><strong>{{ symbol }}</strong></td>
-                                                <td>{{ data.instrument.name }}</td>
-                                                <td>{{ data.instrument.sector|default:"N/A" }}</td>
+                                                <td>{{ asset_info.name|default:"N/A" }}</td>
                                                 <td>
-                                                    {{ data.instrument.market_cap_formatted|default:"N/A" }}
+                                                    <span class="badge bg-{% if asset_info.asset_type == 'stock' %}primary{% elif asset_info.asset_type == 'etf' %}info{% elif asset_info.asset_type == 'commodity' %}warning{% elif asset_info.asset_type == 'cryptocurrency' %}success{% elif asset_info.asset_type == 'forex' %}secondary{% endif %}">
+                                                        {{ asset_info.asset_type|default:"UNKNOWN"|upper }}
+                                                    </span>
                                                 </td>
-                                                <td>{{ data.instrument.currency }}</td>
+                                                <td>
+                                                    {% if asset_info.current_price %}
+                                                        {{ asset_info.current_price|floatformat:2 }}
+                                                    {% else %}
+                                                        N/A
+                                                    {% endif %}
+                                                </td>
+                                                <td>
+                                                    {% if asset_info.market_cap %}
+                                                        {{ asset_info.market_cap|format_market_cap_no_currency:asset_info.currency }}
+                                                    {% else %}
+                                                        N/A
+                                                    {% endif %}
+                                                </td>
+                                                <td>
+                                                    {{ asset_info.currency|default:"USD" }}
+                                                    {% if asset_info.original_currency and asset_info.original_currency != asset_info.currency %}
+                                                        <small class="text-muted">(from {{ asset_info.original_currency }})</small>
+                                                    {% endif %}
+                                                </td>
                                             </tr>
-                                                {% endif %}
-                                            {% endfor %}
+                                            {% endwith %}
                                         {% endif %}
                                     {% endfor %}
                                 </tbody>
@@ -90,56 +266,84 @@
                         </div>
                         
                         <!-- Performance Metrics Comparison -->
-                        {% if metrics %}
+                        {% if comparison_result.metrics %}
                         <div class="table-responsive">
                             <table class="table table-striped">
                                 <thead>
                                     <tr>
                                         <th>{% trans "Metric" %}</th>
-                                        {% for data in symbol_data %}
-                                            <th class="text-center">{{ data.symbol }}</th>
+                                        {% for symbol in symbols %}
+                                            <th class="text-center">{{ symbol }}</th>
                                         {% endfor %}
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <tr>
-                                        <td><strong>{% trans "CAGR (5Y)" %}</strong></td>
-                                        {% for data in symbol_data %}
-                                            {% if data.metrics.cagr %}
-                                                <td class="text-center">{{ data.metrics.cagr|floatformat:2 }}%</td>
-                                            {% else %}
-                                                <td class="text-center">-</td>
-                                            {% endif %}
+                                        <td><strong>{% trans "Total Return" %}</strong></td>
+                                        {% for symbol in symbols %}
+                                            {% with asset_metrics=comparison_result.metrics|lookup:symbol %}
+                                                {% if asset_metrics and asset_metrics.total_return %}
+                                                    <td class="text-center">
+                                                        <span class="{% if asset_metrics.total_return > 0 %}text-success{% else %}text-danger{% endif %}">
+                                                            {{ asset_metrics.total_return|mul:100|floatformat:2 }}%
+                                                        </span>
+                                                    </td>
+                                                {% else %}
+                                                    <td class="text-center">-</td>
+                                                {% endif %}
+                                            {% endwith %}
+                                        {% endfor %}
+                                    </tr>
+                                    <tr>
+                                        <td><strong>{% trans "Annualized Return" %}</strong></td>
+                                        {% for symbol in symbols %}
+                                            {% with asset_metrics=comparison_result.metrics|lookup:symbol %}
+                                                {% if asset_metrics.annualized_return %}
+                                                    <td class="text-center">
+                                                        <span class="{% if asset_metrics.annualized_return > 0 %}text-success{% else %}text-danger{% endif %}">
+                                                            {{ asset_metrics.annualized_return|mul:100|floatformat:2 }}%
+                                                        </span>
+                                                    </td>
+                                                {% else %}
+                                                    <td class="text-center">-</td>
+                                                {% endif %}
+                                            {% endwith %}
                                         {% endfor %}
                                     </tr>
                                     <tr>
                                         <td><strong>{% trans "Volatility" %}</strong></td>
-                                        {% for data in symbol_data %}
-                                            {% if data.metrics.volatility %}
-                                                <td class="text-center">{{ data.metrics.volatility|floatformat:2 }}%</td>
-                                            {% else %}
-                                                <td class="text-center">-</td>
-                                            {% endif %}
+                                        {% for symbol in symbols %}
+                                            {% with asset_metrics=comparison_result.metrics|lookup:symbol %}
+                                                {% if asset_metrics.volatility %}
+                                                    <td class="text-center">{{ asset_metrics.volatility|mul:100|floatformat:2 }}%</td>
+                                                {% else %}
+                                                    <td class="text-center">-</td>
+                                                {% endif %}
+                                            {% endwith %}
                                         {% endfor %}
                                     </tr>
                                     <tr>
                                         <td><strong>{% trans "Sharpe Ratio" %}</strong></td>
-                                        {% for data in symbol_data %}
-                                            {% if data.metrics.sharpe_ratio %}
-                                                <td class="text-center">{{ data.metrics.sharpe_ratio|floatformat:2 }}</td>
-                                            {% else %}
-                                                <td class="text-center">-</td>
-                                            {% endif %}
+                                        {% for symbol in symbols %}
+                                            {% with asset_metrics=comparison_result.metrics|lookup:symbol %}
+                                                {% if asset_metrics.sharpe_ratio %}
+                                                    <td class="text-center">{{ asset_metrics.sharpe_ratio|floatformat:2 }}</td>
+                                                {% else %}
+                                                    <td class="text-center">-</td>
+                                                {% endif %}
+                                            {% endwith %}
                                         {% endfor %}
                                     </tr>
                                     <tr>
                                         <td><strong>{% trans "Max Drawdown" %}</strong></td>
-                                        {% for data in symbol_data %}
-                                            {% if data.metrics.max_drawdown %}
-                                                <td class="text-center">{{ data.metrics.max_drawdown|floatformat:2 }}%</td>
-                                            {% else %}
-                                                <td class="text-center">-</td>
-                                            {% endif %}
+                                        {% for symbol in symbols %}
+                                            {% with asset_metrics=comparison_result.metrics|lookup:symbol %}
+                                                {% if asset_metrics.max_drawdown %}
+                                                    <td class="text-center">{{ asset_metrics.max_drawdown|mul:100|floatformat:2 }}%</td>
+                                                {% else %}
+                                                    <td class="text-center">-</td>
+                                                {% endif %}
+                                            {% endwith %}
                                         {% endfor %}
                                     </tr>
                                 </tbody>
@@ -152,7 +356,7 @@
         </div>
         
         <!-- Correlation Matrix -->
-        {% if correlation_matrix %}
+        {% if comparison_result.correlation_matrix and symbols|length >= 2 %}
         <div class="row mb-4">
             <div class="col-12">
                 <div class="card">
@@ -163,44 +367,53 @@
                     </div>
                     <div class="card-body">
                         <div class="table-responsive">
-                            <table class="table table-striped">
+                            <table class="table table-striped table-sm">
                                 <thead>
                                     <tr>
-                                        <th></th>
+                                        <th>{% trans "Asset" %}</th>
                                         {% for symbol in symbols %}
-                                            <th class="text-center">{{ symbol }}</th>
+                                            {% if symbol in comparison_result.successful_symbols %}
+                                                <th class="text-center">{{ symbol }}</th>
+                                            {% endif %}
                                         {% endfor %}
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for symbol1 in symbols %}
-                                        <tr>
-                                            <td><strong>{{ symbol1 }}</strong></td>
-                                            {% for symbol2 in symbols %}
-                                                <td class="text-center">
-                                                    {% if symbol1 == symbol2 %}
-                                                        <span class="badge bg-primary">1.00</span>
-                                                    {% else %}
-                                                        {% for corr_key, corr_value in correlation_matrix.items %}
-                                                            {% if corr_key == symbol1|add:"_"|add:symbol2 %}
-                                                                <span class="badge bg-{% if corr_value > 0.7 %}danger{% elif corr_value > 0.3 %}warning{% else %}success{% endif %}">
-                                                                    {{ corr_value|floatformat:2 }}
+                                        {% if symbol1 in comparison_result.successful_symbols %}
+                                            {% with correlations=comparison_result.correlation_matrix|lookup:symbol1 %}
+                                            <tr>
+                                                <td><strong>{{ symbol1 }}</strong></td>
+                                                {% for symbol2 in symbols %}
+                                                    {% if symbol2 in comparison_result.successful_symbols %}
+                                                        {% with correlation=correlations|lookup:symbol2 %}
+                                                        <td class="text-center">
+                                                            {% if correlation is not None %}
+                                                                <span class="badge 
+                                                                    {% if correlation >= 0.7 %}bg-danger
+                                                                    {% elif correlation >= 0.3 %}bg-warning
+                                                                    {% elif correlation >= -0.3 %}bg-success
+                                                                    {% elif correlation >= -0.7 %}bg-info
+                                                                    {% else %}bg-secondary{% endif %}">
+                                                                    {{ correlation|floatformat:3 }}
                                                                 </span>
+                                                            {% else %}
+                                                                -
                                                             {% endif %}
-                                                        {% empty %}
-                                                            <span class="text-muted">-</span>
-                                                        {% endfor %}
+                                                        </td>
+                                                        {% endwith %}
                                                     {% endif %}
-                                                </td>
-                                            {% endfor %}
-                                        </tr>
+                                                {% endfor %}
+                                            </tr>
+                                            {% endwith %}
+                                        {% endif %}
                                     {% endfor %}
                                 </tbody>
                             </table>
                         </div>
                         <small class="text-muted">
                             <i class="fas fa-info-circle me-1"></i>
-                            {% trans "Correlation values: Red (>0.7) = High, Yellow (0.3-0.7) = Medium, Green (<0.3) = Low" %}
+                            {% trans "Correlation values range from -1 (perfect negative correlation) to +1 (perfect positive correlation). Values closer to 0 indicate weaker correlation." %}
                         </small>
                     </div>
                 </div>
@@ -208,141 +421,1055 @@
         </div>
         {% endif %}
         
-        <!-- Price Charts -->
-        <div class="row">
+        <!-- Efficient Frontier -->
+        {% if comparison_result.efficient_frontier and comparison_result.efficient_frontier.success %}
+        <div class="row mb-4">
             <div class="col-12">
                 <div class="card">
                     <div class="card-header">
                         <h5 class="mb-0">
-                            <i class="fas fa-chart-line me-2"></i>{% trans "Price Comparison Chart" %}
+                            <i class="fas fa-chart-line me-2"></i>{% trans "Efficient Frontier Analysis" %}
                         </h5>
                     </div>
                     <div class="card-body">
-                        <div style="height: 400px;">
-                            <canvas id="comparisonChart"></canvas>
+                        <!-- Optimal Portfolios with Integrated Weights -->
+                        <div class="row mb-4">
+                            <!-- Minimum Risk Portfolio -->
+                            <div class="col-md-4 mb-3">
+                                <div class="card h-100">
+                                    <div class="card-header bg-success text-white">
+                                        <h6 class="mb-0">
+                                            <i class="fas fa-shield-alt me-2"></i>{% trans "Minimum Risk Portfolio" %}
+                                        </h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row mb-3">
+                                            <div class="col-6">
+                                                <strong>{% trans "Return:" %}</strong><br>
+                                                <span class="text-success fs-5">{{ comparison_result.efficient_frontier.min_risk_portfolio.expected_return|mul:100|floatformat:1 }}%</span>
+                                            </div>
+                                            <div class="col-6">
+                                                <strong>{% trans "Risk:" %}</strong><br>
+                                                <span class="text-success fs-5">{{ comparison_result.efficient_frontier.min_risk_portfolio.risk|mul:100|floatformat:1 }}%</span>
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-12">
+                                                <strong>{% trans "Sharpe Ratio:" %}</strong><br>
+                                                <span class="text-success fs-5">{{ comparison_result.efficient_frontier.min_risk_portfolio.sharpe_ratio|floatformat:2 }}</span>
+                                            </div>
+                                        </div>
+                                        <hr>
+                                        <div class="row">
+                                            <div class="col-12">
+                                                <strong class="text-muted">{% trans "Asset Allocation:" %}</strong>
+                                                <div class="mt-2">
+                                                    {% for symbol in comparison_result.successful_symbols %}
+                                                        {% with symbol_index=forloop.counter0 %}
+                                                        {% if comparison_result.efficient_frontier.min_risk_portfolio.weights %}
+                                                            {% with weight=comparison_result.efficient_frontier.min_risk_portfolio.weights|get_index:symbol_index %}
+                                                                {% if weight is not None and weight > 0.001 %}
+                                                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                                                    <small class="text-muted">{{ symbol }}</small>
+                                                                    <small class="fw-bold">{{ weight|mul:100|floatformat:1 }}%</small>
+                                                                </div>
+                                                                {% endif %}
+                                                            {% endwith %}
+                                                        {% endif %}
+                                                        {% endwith %}
+                                                    {% endfor %}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Maximum Return Portfolio -->
+                            <div class="col-md-4 mb-3">
+                                <div class="card h-100">
+                                    <div class="card-header bg-primary text-white">
+                                        <h6 class="mb-0">
+                                            <i class="fas fa-rocket me-2"></i>{% trans "Maximum Return Portfolio" %}
+                                        </h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row mb-3">
+                                            <div class="col-6">
+                                                <strong>{% trans "Return:" %}</strong><br>
+                                                <span class="text-primary fs-5">{{ comparison_result.efficient_frontier.max_return_portfolio.expected_return|mul:100|floatformat:1 }}%</span>
+                                            </div>
+                                            <div class="col-6">
+                                                <strong>{% trans "Risk:" %}</strong><br>
+                                                <span class="text-primary fs-5">{{ comparison_result.efficient_frontier.max_return_portfolio.risk|mul:100|floatformat:1 }}%</span>
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-12">
+                                                <strong>{% trans "Sharpe Ratio:" %}</strong><br>
+                                                <span class="text-primary fs-5">{{ comparison_result.efficient_frontier.max_return_portfolio.sharpe_ratio|floatformat:2 }}</span>
+                                            </div>
+                                        </div>
+                                        <hr>
+                                        <div class="row">
+                                            <div class="col-12">
+                                                <strong class="text-muted">{% trans "Asset Allocation:" %}</strong>
+                                                <div class="mt-2">
+                                                    {% for symbol in comparison_result.successful_symbols %}
+                                                        {% with symbol_index=forloop.counter0 %}
+                                                        {% if comparison_result.efficient_frontier.max_return_portfolio.weights %}
+                                                            {% with weight=comparison_result.efficient_frontier.max_return_portfolio.weights|get_index:symbol_index %}
+                                                                {% if weight is not None and weight > 0.001 %}
+                                                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                                                    <small class="text-muted">{{ symbol }}</small>
+                                                                    <small class="fw-bold">{{ weight|mul:100|floatformat:1 }}%</small>
+                                                                </div>
+                                                                {% endif %}
+                                                            {% endwith %}
+                                                        {% endif %}
+                                                        {% endwith %}
+                                                    {% endfor %}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Maximum Sharpe Ratio Portfolio -->
+                            <div class="col-md-4 mb-3">
+                                <div class="card h-100">
+                                    <div class="card-header bg-warning text-dark">
+                                        <h6 class="mb-0">
+                                            <i class="fas fa-star me-2"></i>{% trans "Maximum Sharpe Portfolio" %}
+                                        </h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row mb-3">
+                                            <div class="col-6">
+                                                <strong>{% trans "Return:" %}</strong><br>
+                                                <span class="text-warning fs-5">{{ comparison_result.efficient_frontier.max_sharpe_portfolio.expected_return|mul:100|floatformat:1 }}%</span>
+                                            </div>
+                                            <div class="col-6">
+                                                <strong>{% trans "Risk:" %}</strong><br>
+                                                <span class="text-warning fs-5">{{ comparison_result.efficient_frontier.max_sharpe_portfolio.risk|mul:100|floatformat:1 }}%</span>
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-12">
+                                                <strong>{% trans "Sharpe Ratio:" %}</strong><br>
+                                                <span class="text-warning fs-5">{{ comparison_result.efficient_frontier.max_sharpe_portfolio.sharpe_ratio|floatformat:2 }}</span>
+                                            </div>
+                                        </div>
+                                        <hr>
+                                        <div class="row">
+                                            <div class="col-12">
+                                                <strong class="text-muted">{% trans "Asset Allocation:" %}</strong>
+                                                <div class="mt-2">
+                                                    {% for symbol in comparison_result.successful_symbols %}
+                                                        {% with symbol_index=forloop.counter0 %}
+                                                        {% if comparison_result.efficient_frontier.max_sharpe_portfolio.weights %}
+                                                            {% with weight=comparison_result.efficient_frontier.max_sharpe_portfolio.weights|get_index:symbol_index %}
+                                                                {% if weight is not None and weight > 0.001 %}
+                                                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                                                    <small class="text-muted">{{ symbol }}</small>
+                                                                    <small class="fw-bold">{{ weight|mul:100|floatformat:1 }}%</small>
+                                                                </div>
+                                                                {% endif %}
+                                                            {% endwith %}
+                                                        {% endif %}
+                                                        {% endwith %}
+                                                    {% endfor %}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Efficient Frontier Chart -->
+                        <div class="row mb-4">
+                            <div class="col-12">
+                                <h6>{% trans "Efficient Frontier Chart" %}</h6>
+                                <div class="card">
+                                    <div class="card-body">
+                                        <canvas id="efficientFrontierChart" height="400"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Explanation -->
+                        <div class="alert alert-light border" role="alert">
+                            <i class="fas fa-lightbulb me-2 text-warning"></i>
+                            <strong>{% trans "About Efficient Frontier" %}</strong><br>
+                            {% trans "Efficient Frontier uses monthly total return historical data to calculate optimized portfolio points. Optimization uses annualized risk (annualized standard deviation) as a utility function with constantly rebalanced portfolios (monthly rebalanced)." %}
                         </div>
                     </div>
                 </div>
             </div>
         </div>
+        {% elif comparison_result.efficient_frontier and comparison_result.efficient_frontier.error %}
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="alert alert-warning" role="alert">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>{% trans "Efficient Frontier Calculation Error:" %}</strong> {{ comparison_result.efficient_frontier.error }}
+                </div>
+            </div>
+        </div>
+        {% endif %}
         {% endif %}
     </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
-{% if symbols and instruments_data %}
+<script>
+// Symbol Search and Selection Functionality
+class SymbolSearch {
+    constructor() {
+        this.searchInput = document.getElementById('symbolSearchInput');
+        this.searchResults = document.getElementById('searchResults');
+        this.searchResultsContent = document.getElementById('searchResultsContent');
+        this.searchLoading = document.getElementById('searchLoading');
+        this.searchFilters = document.getElementById('searchFilters');
+        this.selectedSymbols = document.getElementById('selectedSymbols');
+        this.symbolsInput = document.getElementById('symbolsInput');
+        this.compareButton = document.getElementById('compareButton');
+        
+        this.selectedSymbolsList = new Set();
+        this.searchTimeout = null;
+        this.currentSearchQuery = '';
+        this.currentFilter = 'all';
+        this.allResults = []; // Store all results for filtering
+        
+        this.init();
+    }
+    
+    init() {
+        // Initialize with existing symbols
+        const existingSymbols = this.symbolsInput.value;
+        if (existingSymbols) {
+            existingSymbols.split(',').forEach(symbol => {
+                if (symbol.trim()) {
+                    this.selectedSymbolsList.add(symbol.trim().toUpperCase());
+                }
+            });
+        }
+        
+        // Event listeners
+        this.searchInput.addEventListener('input', (e) => this.handleSearch(e.target.value));
+        this.searchInput.addEventListener('keydown', (e) => this.handleKeyDown(e));
+        this.searchInput.addEventListener('focus', () => {
+            // Show results if there are actual results, or if user has typed something
+            if ((this.allResults && this.allResults.length > 0) || this.currentSearchQuery.length >= 2) {
+                this.showResults();
+            }
+        });
+        // Removed blur event listener - it was causing conflicts
+        
+        // Ultra-simple approach: single event handler with special dropdown ID
+        document.addEventListener('click', (e) => {
+            console.log('Click detected on:', e.target.className, e.target.tagName);
+            
+            // Get the dropdown container
+            const dropdownContainer = document.getElementById('symbolDropdownContainer');
+            
+            // Check if click is inside the dropdown container
+            if (dropdownContainer && dropdownContainer.contains(e.target)) {
+                console.log('Click inside dropdown container');
+                
+                // Handle filter button clicks - use closest() to find the button
+                const filterButton = e.target.closest('.filter-btn');
+                if (filterButton) {
+                    console.log('Filter button clicked:', filterButton.textContent, 'Exchange:', filterButton.getAttribute('data-exchange'));
+                    console.log('Button element:', filterButton);
+                    this.handleFilterClick(filterButton);
+                    console.log('Filter button handled, keeping dropdown open');
+                    return;
+                }
+                
+                // Debug: Check if target is a filter button but closest() didn't work
+                if (e.target.classList.contains('filter-btn')) {
+                    console.log('Direct filter button click detected:', e.target.textContent);
+                    this.handleFilterClick(e.target);
+                    console.log('Direct filter button handled, keeping dropdown open');
+                    return;
+                }
+                
+                // Handle search result clicks
+                const resultItem = e.target.closest('.search-result-item');
+                if (resultItem) {
+                    const symbol = resultItem.getAttribute('data-symbol');
+                    const name = resultItem.getAttribute('data-name');
+                    const type = resultItem.getAttribute('data-type');
+                    
+                    if (symbol && name && type) {
+                        console.log('Selecting symbol:', symbol);
+                        this.selectSymbol(symbol, name, type);
+                        this.hideResults();
+                    }
+                    return;
+                }
+                
+                // Any other click inside dropdown - keep it open
+                console.log('Click inside dropdown, keeping open');
+                return;
+            }
+            
+            // Click outside dropdown - close it
+            console.log('Click outside dropdown, closing...');
+            this.hideResults();
+        });
+        
+        this.updateCompareButton();
+    }
+    
+    handleSearch(query) {
+        console.log('handleSearch called with:', query);
+        this.currentSearchQuery = query.trim();
+        
+        // Cancel any pending search request
+        if (this.currentSearchRequest) {
+            this.currentSearchRequest.abort();
+            this.currentSearchRequest = null;
+        }
+        
+        // Clear previous timeout
+        if (this.searchTimeout) {
+            clearTimeout(this.searchTimeout);
+        }
+        
+        // Hide results if query is too short
+        if (this.currentSearchQuery.length < 2) {
+            console.log('Query too short, hiding results');
+            this.hideResults();
+            this.allResults = []; // Clear stored results
+            this.exchangeFiltersUpdated = false; // Reset exchange filters flag
+            return;
+        }
+        
+        console.log('Query length sufficient, showing loading');
+        // Show loading
+        this.showLoading();
+        
+        // Debounce search with proper request cancellation
+        this.searchTimeout = setTimeout(() => {
+            this.performSearch(this.currentSearchQuery);
+        }, 300);
+    }
+    
+    async performSearch(query) {
+        // Create abort controller for this request
+        const abortController = new AbortController();
+        this.currentSearchRequest = abortController;
+        
+        try {
+            console.log('Performing search for:', query);
+            const response = await fetch(`/api/v1/search/?q=${encodeURIComponent(query)}&limit=20`, {
+                signal: abortController.signal
+            });
+            
+            // Check if this request was cancelled
+            if (this.currentSearchRequest !== abortController) {
+                console.log('Request cancelled, ignoring response');
+                return;
+            }
+            
+            const data = await response.json();
+            
+            // Double-check the query hasn't changed
+            if (this.currentSearchQuery !== query) {
+                console.log('Query changed during search, ignoring results');
+                return;
+            }
+            
+            this.hideLoading();
+            
+            if (data.results && data.results.length > 0) {
+                this.allResults = data.results; // Store all results
+                await this.displayResults(data.results);
+                this.showResults();
+            } else {
+                this.allResults = [];
+                this.displayNoResults();
+                this.hideResults(); // Hide dropdown when no results
+            }
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                console.log('Search request was cancelled');
+                return;
+            }
+            console.error('Search error:', error);
+            this.hideLoading();
+            this.displayError();
+            this.hideResults(); // Hide dropdown on error
+        } finally {
+            // Clear the current request reference
+            if (this.currentSearchRequest === abortController) {
+                this.currentSearchRequest = null;
+            }
+        }
+    }
+    
+    async displayResults(results) {
+        console.log('displayResults called with', results.length, 'results');
+        
+        // Filter results based on current filter
+        const filteredResults = this.currentFilter === 'all' 
+            ? results 
+            : results.filter(result => result.exchange === this.currentFilter);
+        
+        console.log('Filtered results:', filteredResults.length);
+        
+        let html = '';
+        
+        // Show/hide filters based on results
+        if (results.length > 0) {
+            this.searchFilters.style.display = 'block';
+            // Update exchange filters only if not already done
+            if (!this.exchangeFiltersUpdated) {
+                this.updateExchangeFilters(results).catch(error => {
+                    console.error('Error updating exchange filters:', error);
+                });
+            }
+        } else {
+            this.searchFilters.style.display = 'none';
+        }
+        
+        // Add filtered results
+        filteredResults.forEach(result => {
+            const isSelected = this.selectedSymbolsList.has(result.symbol.toUpperCase());
+            const priceChange = result.change_percentage || result.price_change;
+            const priceChangeClass = priceChange >= 0 ? 'positive' : 'negative';
+            
+            
+            html += `
+                <div class="search-result-item ${isSelected ? 'selected' : ''}" 
+                     data-symbol="${result.symbol}" 
+                     data-name="${result.name}"
+                     data-type="${result.type}"
+                     style="${isSelected ? 'opacity: 0.6; background-color: #e9ecef;' : ''}">
+                    <div class="search-result-main">
+                        <div class="search-result-symbol">
+                            ${result.symbol}
+                            ${result.currency ? '<span class="currency-badge">' + result.currency + '</span>' : ''}
+                            ${isSelected ? '<span class="search-result-badge badge bg-success ms-1">SELECTED</span>' : ''}
+                        </div>
+                        <div class="search-result-name">
+                            ${result.name}
+                        </div>
+                        <div class="search-result-details">
+                            ${result.exchange || ''} ${result.sector ? '• ' + result.sector : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        this.searchResultsContent.innerHTML = html;
+        console.log('displayResults completed, HTML length:', html.length);
+    }
+    
+    displayNoResults() {
+        this.searchResultsContent.innerHTML = `
+            <div class="search-no-results">
+                <i class="fas fa-search me-2"></i>
+                No results found for "${this.currentSearchQuery}"
+                <br>
+                <small>Try searching by company name or symbol</small>
+            </div>
+        `;
+    }
+    
+    displayError() {
+        this.searchResultsContent.innerHTML = `
+            <div class="search-no-results">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Error searching. Please try again.
+            </div>
+        `;
+    }
+    
+    selectSymbol(symbol, name, type) {
+        console.log('selectSymbol called with:', { symbol, name, type });
+        const symbolUpper = symbol.toUpperCase();
+        
+        if (this.selectedSymbolsList.has(symbolUpper)) {
+            console.log('Symbol already selected:', symbolUpper);
+            return; // Already selected
+        }
+        
+        console.log('Adding symbol:', symbolUpper);
+        
+        // Add to selected symbols
+        this.selectedSymbolsList.add(symbolUpper);
+        
+        // Create symbol tag
+        const tagHtml = `
+            <span class="symbol-tag" data-symbol="${symbolUpper}">
+                <span class="symbol-text">${symbolUpper}</span>
+                <button type="button" class="symbol-remove" onclick="symbolSearch.removeSymbol('${symbolUpper}')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </span>
+        `;
+        
+        this.selectedSymbols.insertAdjacentHTML('beforeend', tagHtml);
+        
+        // Update hidden input
+        this.updateSymbolsInput();
+        
+        // Clear search input
+        this.searchInput.value = '';
+        this.currentSearchQuery = ''; // Reset the current search query
+        this.hideResults();
+        
+        // Update compare button
+        this.updateCompareButton();
+        
+        // Focus back to search input
+        this.searchInput.focus();
+    }
+    
+    removeSymbol(symbol) {
+        const symbolUpper = symbol.toUpperCase();
+        
+        // Remove from set
+        this.selectedSymbolsList.delete(symbolUpper);
+        
+        // Remove from DOM
+        const tag = this.selectedSymbols.querySelector(`[data-symbol="${symbolUpper}"]`);
+        if (tag) {
+            tag.remove();
+        }
+        
+        // Update hidden input
+        this.updateSymbolsInput();
+        
+        // Update compare button
+        this.updateCompareButton();
+    }
+    
+    updateSymbolsInput() {
+        this.symbolsInput.value = Array.from(this.selectedSymbolsList).join(',');
+    }
+    
+    updateCompareButton() {
+        const count = this.selectedSymbolsList.size;
+        if (count >= 2) {
+            this.compareButton.disabled = false;
+            this.compareButton.innerHTML = `<i class="fas fa-balance-scale me-2"></i>Compare ${count} Assets`;
+        } else {
+            this.compareButton.disabled = true;
+            this.compareButton.innerHTML = `<i class="fas fa-balance-scale me-2"></i>Compare (min 2 assets)`;
+        }
+    }
+    
+    handleKeyDown(e) {
+        if (e.key === 'Escape') {
+            this.hideResults();
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            // Select first result if available
+            const firstResult = this.searchResultsContent.querySelector('.search-result-item:not(.selected)');
+            if (firstResult) {
+                firstResult.click();
+            }
+        }
+    }
+    
+    showResults() {
+        console.log('showResults called, content length:', this.searchResultsContent.innerHTML.trim().length);
+        if (this.searchResultsContent.innerHTML.trim()) {
+            this.searchResults.style.display = 'block';
+            console.log('Results shown');
+        } else {
+            console.log('No content to show');
+        }
+    }
+    
+    hideResults() {
+        this.searchResults.style.display = 'none';
+    }
+    
+    showLoading() {
+        this.searchLoading.classList.remove('d-none');
+        this.searchLoading.classList.add('show');
+    }
+    
+    hideLoading() {
+        this.searchLoading.classList.add('d-none');
+        this.searchLoading.classList.remove('show');
+    }
+    
+    
+    getCurrencySymbol(currency) {
+        const currencySymbols = {
+            'USD': '$',
+            'EUR': '€',
+            'GBP': '£',
+            'JPY': '¥',
+            'RUB': '₽',
+            'CAD': 'C$',
+            'AUD': 'A$',
+            'CHF': 'CHF',
+            'CNY': '¥',
+            'SEK': 'kr',
+            'NOK': 'kr',
+            'DKK': 'kr',
+            'PLN': 'zł',
+            'CZK': 'Kč',
+            'HUF': 'Ft',
+            'BRL': 'R$',
+            'MXN': '$',
+            'INR': '₹',
+            'KRW': '₩',
+            'SGD': 'S$',
+            'HKD': 'HK$',
+            'NZD': 'NZ$',
+            'TRY': '₺',
+            'ZAR': 'R',
+            'THB': '฿'
+        };
+        return currencySymbols[currency] || currency || '$';
+    }
+    
+    // Convert USD price to trading currency (simplified conversion rates)
+    convertPriceToCurrency(priceUsd, currency) {
+        if (!priceUsd || currency === 'USD') return priceUsd;
+        
+        // Simplified conversion rates (in production, use real-time rates)
+        const conversionRates = {
+            'EUR': 0.85,
+            'GBP': 0.73,
+            'JPY': 110,
+            'RUB': 75,
+            'CAD': 1.25,
+            'AUD': 1.35,
+            'CHF': 0.92,
+            'CNY': 6.45,
+            'SEK': 8.5,
+            'NOK': 8.8,
+            'DKK': 6.3,
+            'PLN': 3.9,
+            'CZK': 21.5,
+            'HUF': 300,
+            'BRL': 5.2,
+            'MXN': 20,
+            'INR': 74,
+            'KRW': 1180,
+            'SGD': 1.35,
+            'HKD': 7.8,
+            'NZD': 1.4,
+            'TRY': 8.5,
+            'ZAR': 14.5,
+            'THB': 33
+        };
+        
+        const rate = conversionRates[currency];
+        if (!rate) return priceUsd; // Fallback to USD if no rate available
+        
+        return priceUsd * rate;
+    }
+    
+    getShortExchangeName(fullName) {
+        // Create shorter, more readable exchange names
+        const shortNames = {
+            'New York Stock Exchange': 'NYSE',
+            'NASDAQ': 'NASDAQ',
+            'American Stock Exchange': 'AMEX',
+            'London Stock Exchange': 'LSE',
+            'Tokyo Stock Exchange': 'TSE',
+            'Hong Kong Stock Exchange': 'HKEX',
+            'Shanghai Stock Exchange': 'SSE',
+            'Shenzhen Stock Exchange': 'SZSE',
+            'Bombay Stock Exchange': 'BSE',
+            'National Stock Exchange of India': 'NSE',
+            'Moscow Stock Exchange': 'MOEX',
+            'Toronto Stock Exchange': 'TSX',
+            'Australian Securities Exchange': 'ASX',
+            'Euronext': 'Euronext',
+            'Deutsche Börse': 'XETRA',
+            'Swiss Exchange': 'SIX',
+            'Madrid Stock Exchange': 'BME',
+            'Mexican Stock Exchange': 'BMV',
+            'B3 S.A.': 'B3',
+            'Korea Exchange': 'KRX',
+            'Stock Exchange of Singapore': 'SGX',
+            'Tel Aviv Stock Exchange': 'TASE',
+            'Johannesburg Stock Exchange': 'JSE',
+            'Copenhagen Stock Exchange': 'CSE',
+            'OMX Nordic Exchange': 'OMX',
+            'Istanbul Stock Exchange': 'BIST',
+            'Warsaw Stock Exchange': 'WSE',
+            'Philippine Stock Exchange': 'PSE',
+            'Stock Exchange of Thailand': 'SET',
+            'Malaysian Stock Exchange': 'KLSE',
+            'Indonesia Stock Exchange': 'IDX',
+            'Cryptocurrency Exchange': 'CCC',
+            'Foreign Exchange': 'FOREX',
+            'Commodity Exchange': 'COMMODITY',
+            'Over-The-Counter': 'OTC',
+            'Other OTC': 'OTC',
+            'OTC Markets US Pink Slips': 'OTC',
+            'Chicago Board Options Exchange': 'CBOE',
+            'Canadian Securities Exchange': 'CNQ',
+            'NASDAQ Copenhagen': 'CPH',
+            'Dubai Financial Market': 'DFM',
+            'Qatar Stock Exchange': 'QSE',
+            'Euronext Dublin': 'DUB',
+            'Dusseldorf Stock Exchange': 'DUS',
+            'CBOE Europe': 'DXE',
+            'Egyptian Exchange': 'EGX',
+            'Frankfurt Stock Exchange': 'FSX',
+            'Hamburg Stock Exchange': 'HAM',
+            'NASDAQ Helsinki': 'HEL',
+            'Ho Chi Minh Stock Exchange': 'HOSE',
+            'NASDAQ Iceland': 'ICE',
+            'International Order Book': 'IOB',
+            'Euronext Lisbon': 'LIS',
+            'Italian Stock Exchange': 'MIL',
+            'Munich Stock Exchange': 'MUN',
+            'CBOE CA': 'NEO',
+            'New Zealand Exchange': 'NZE',
+            'Oslo Stock Exchange': 'OSL',
+            'Euronext Paris': 'PAR',
+            'Prague Stock Exchange': 'PRA',
+            'NASDAQ Riga': 'RIS',
+            'Saudi Exchange': 'SAU',
+            'Santiago Stock Exchange': 'SGO',
+            'Taiwan Stock Exchange': 'TAI',
+            'NASDAQ Tallinn': 'TAL',
+            'Toronto Stock Exchange Ventures': 'TSXV',
+            'Taipei Exchange': 'TWO',
+            'Vienna Stock Exchange': 'VIE',
+            'Aquis Stock Exchange': 'AQS',
+            'Euronext Amsterdam': 'AMS',
+            'Athens Stock Exchange': 'ATH',
+            'Berlin Stock Exchange': 'BER',
+            'Euronext Brussels': 'BRU',
+            'Budapest Stock Exchange': 'BUD',
+            'Buenos Aires Stock Exchange': 'BUE',
+            'Colombia Stock Exchange': 'BVC',
+            'KOSDAQ': 'KOE',
+            'Kuwait Stock Exchange': 'KUW',
+            'Stuttgart Stock Exchange': 'STU',
+            'Stockholm Stock Exchange': 'STO'
+        };
+        
+        return shortNames[fullName] || fullName.split(' ').map(word => word.charAt(0)).join('').substring(0, 4);
+    }
+    
+    async updateExchangeFilters(results) {
+        // Mark as updated to prevent repeated calls
+        this.exchangeFiltersUpdated = true;
+        
+        // Get unique exchanges from results
+        const exchanges = [...new Set(results.map(result => result.exchange).filter(exchange => exchange))];
+        
+        // Get the filter buttons container
+        const filterButtons = document.getElementById('filterButtons');
+        
+        // Clear existing buttons except "All"
+        const allButton = filterButtons.querySelector('[data-exchange="all"]');
+        filterButtons.innerHTML = '';
+        filterButtons.appendChild(allButton);
+        
+        // Create exchange mapping with short names
+        const exchangeShortNames = {
+            'New York Stock Exchange': 'NYSE',
+            'NASDAQ': 'NASDAQ',
+            'American Stock Exchange': 'AMEX',
+            'London Stock Exchange': 'LSE',
+            'Toronto Stock Exchange': 'TSX',
+            'Tokyo Stock Exchange': 'TSE',
+            'Hong Kong Stock Exchange': 'HKEX',
+            'Shanghai Stock Exchange': 'SSE',
+            'Shenzhen Stock Exchange': 'SZSE',
+            'Bombay Stock Exchange': 'BSE',
+            'National Stock Exchange of India': 'NSE',
+            'Australian Securities Exchange': 'ASX',
+            'Euronext': 'EUR',
+            'Deutsche Börse': 'DB',
+            'SIX Swiss Exchange': 'SIX',
+            'Borsa Italiana': 'BIT',
+            'Madrid Stock Exchange': 'BME',
+            'Oslo Stock Exchange': 'OSE',
+            'Copenhagen Stock Exchange': 'CSE',
+            'Helsinki Stock Exchange': 'HEL',
+            'Warsaw Stock Exchange': 'WSE',
+            'Prague Stock Exchange': 'PSE',
+            'Vienna Stock Exchange': 'VSE',
+            'Brussels Stock Exchange': 'BSE',
+            'Irish Stock Exchange': 'ISE',
+            'Lisbon Stock Exchange': 'LSE',
+            'Athens Stock Exchange': 'ASE',
+            'Istanbul Stock Exchange': 'BIST',
+            'Tel Aviv Stock Exchange': 'TASE',
+            'Johannesburg Stock Exchange': 'JSE',
+            'Mexican Stock Exchange': 'BMV',
+            'Buenos Aires Stock Exchange': 'BCBA',
+            'Santiago Stock Exchange': 'BCS',
+            'Colombia Stock Exchange': 'BVC',
+            'Stock Exchange of Thailand': 'SET',
+            'Bursa Malaysia': 'KLSE',
+            'Indonesia Stock Exchange': 'IDX',
+            'Philippine Stock Exchange': 'PSE',
+            'Ho Chi Minh Stock Exchange': 'HOSE',
+            'Taiwan Stock Exchange': 'TWSE',
+            'New Zealand Stock Exchange': 'NZX',
+            'Egyptian Exchange': 'EGX',
+            'Saudi Stock Exchange': 'Tadawul',
+            'Dubai Financial Market': 'DFM',
+            'Qatar Stock Exchange': 'QSE',
+            'Kuwait Stock Exchange': 'KSE',
+            'Budapest Stock Exchange': 'BSE',
+            'Riga Stock Exchange': 'RSE',
+            'Tallinn Stock Exchange': 'TSE',
+            'Iceland Stock Exchange': 'ICE',
+            'Moscow Exchange': 'MOEX',
+            'COMMODITY': 'COMMODITY'
+        };
+        
+        // Add exchange filter buttons with short names
+        exchanges.forEach(exchange => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'filter-btn';
+            button.setAttribute('data-exchange', exchange);
+            
+            // Use short name if available, otherwise use exchange code
+            const shortName = exchangeShortNames[exchange] || exchange;
+            button.textContent = shortName;
+            
+            filterButtons.appendChild(button);
+        });
+        
+        console.log('Exchange filters updated with', exchanges.length, 'exchanges');
+    }
+    
+    async handleFilterClick(button) {
+        // Update active filter button
+        this.searchFilters.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        button.classList.add('active');
+        
+        // Update current filter
+        this.currentFilter = button.getAttribute('data-exchange');
+        
+        // Re-display results with new filter
+        if (this.allResults.length > 0) {
+            await this.displayResults(this.allResults);
+        }
+    }
+    
+}
+
+// Global functions for onclick handlers
+function removeSymbol(symbol) {
+    symbolSearch.removeSymbol(symbol);
+}
+
+// Initialize when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM loaded, initializing SymbolSearch...');
+    try {
+        window.symbolSearch = new SymbolSearch();
+        console.log('SymbolSearch initialized successfully');
+    } catch (error) {
+        console.error('Error initializing SymbolSearch:', error);
+        alert('Error initializing symbol search: ' + error.message);
+    }
+});
+</script>
+{% if symbols and comparison_result.chart_data %}
 <script>
 // Comparison Chart
 const ctx = document.getElementById('comparisonChart').getContext('2d');
 const datasets = [];
 
+// Color palette for different symbols
+const colors = [
+    'hsl(0, 70%, 50%)',      // Red
+    'hsl(60, 70%, 50%)',     // Yellow
+    'hsl(120, 70%, 50%)',    // Green
+    'hsl(180, 70%, 50%)',    // Cyan
+    'hsl(240, 70%, 50%)',    // Blue
+    'hsl(300, 70%, 50%)'     // Magenta
+];
+
+const bgColors = [
+    'hsla(0, 70%, 50%, 0.1)',
+    'hsla(60, 70%, 50%, 0.1)',
+    'hsla(120, 70%, 50%, 0.1)',
+    'hsla(180, 70%, 50%, 0.1)',
+    'hsla(240, 70%, 50%, 0.1)',
+    'hsla(300, 70%, 50%, 0.1)'
+];
+
+// Create datasets for each symbol using server-aggregated data
 {% for symbol in symbols %}
-    {% if symbol in instruments_data %}
-        {% for key, data in instruments_data.items %}
-            {% if key == symbol %}
-        datasets.push({
-            label: '{{ symbol }}',
-            data: [
-                {% for price in data.prices|slice:":50" %}
-                {
-                    x: '{{ price.date|date:"Y-m-d" }}',
-                    y: {{ price.close_price|floatformat:2 }}
-                }{% if not forloop.last %},{% endif %}
-                {% endfor %}
-            ].reverse(),
-            {% if forloop.counter0 == 0 %}
-            borderColor: 'hsl(0, 70%, 50%)',
-            backgroundColor: 'hsla(0, 70%, 50%, 0.1)',
-            {% elif forloop.counter0 == 1 %}
-            borderColor: 'hsl(60, 70%, 50%)',
-            backgroundColor: 'hsla(60, 70%, 50%, 0.1)',
-            {% elif forloop.counter0 == 2 %}
-            borderColor: 'hsl(120, 70%, 50%)',
-            backgroundColor: 'hsla(120, 70%, 50%, 0.1)',
-            {% elif forloop.counter0 == 3 %}
-            borderColor: 'hsl(180, 70%, 50%)',
-            backgroundColor: 'hsla(180, 70%, 50%, 0.1)',
-            {% elif forloop.counter0 == 4 %}
-            borderColor: 'hsl(240, 70%, 50%)',
-            backgroundColor: 'hsla(240, 70%, 50%, 0.1)',
-            {% else %}
-            borderColor: 'hsl(300, 70%, 50%)',
-            backgroundColor: 'hsla(300, 70%, 50%, 0.1)',
-            {% endif %}
-            tension: 0.1
-        });
-            {% endif %}
-        {% endfor %}
+    {% if symbol in comparison_result.chart_data %}
+        try {
+            const symbolData = [];
+            {% for point in comparison_result.chart_data|lookup:symbol %}
+            symbolData.push({
+                x: '{{ point.date|date:"Y-m-d" }}',
+                y: {{ point.value|floatformat:2 }}{% if point.raw_value %},
+                rawValue: {{ point.raw_value|floatformat:2 }}{% endif %}
+            });
+            {% endfor %}
+            
+            if (symbolData.length > 0) {
+                // Sort data by date to ensure chronological order
+                symbolData.sort((a, b) => new Date(a.x) - new Date(b.x));
+                
+                console.log('{{ symbol }} data points:', symbolData.length);
+                console.log('{{ symbol }} date range:', symbolData[0]?.x, 'to', symbolData[symbolData.length-1]?.x);
+                
+                const colorIndex = {{ forloop.counter0 }} % colors.length;
+                datasets.push({
+                    label: '{{ symbol }}',
+                    data: symbolData,
+                    borderColor: colors[colorIndex],
+                    backgroundColor: bgColors[colorIndex],
+                    tension: 0.1,
+                    fill: false,
+                    pointRadius: 0,  // No points for smooth line
+                    pointHoverRadius: 4,
+                    spanGaps: true
+                });
+            }
+        } catch (error) {
+            console.error('Error processing data for {{ symbol }}:', error);
+        }
     {% endif %}
 {% endfor %}
 
 // Initialize comparison chart
+const chartCurrency = '{{ base_currency }}';
 
-// Get currency from first symbol data
-let chartCurrency = 'USD';
-{% for symbol in symbols %}
-    {% if symbol in instruments_data %}
-        {% for key, data in instruments_data.items %}
-            {% if key == symbol %}
-chartCurrency = '{{ data.instrument.currency_symbol }}';
-            {% endif %}
-        {% endfor %}
-        {# Only process first matching symbol - we'll continue but won't update chartCurrency again #}
-    {% endif %}
-{% endfor %}
+// Debug: Log essential info
+console.log('Chart datasets:', datasets.length);
+console.log('Chart.js loaded:', typeof Chart !== 'undefined');
+
 
 // Ensure Chart.js is loaded and we have data
 if (typeof Chart !== 'undefined' && datasets.length > 0) {
-    new Chart(ctx, {
-        type: 'line',
-        data: { datasets: datasets },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: {
-                intersect: false,
-                mode: 'index'
-            },
-            scales: {
-                x: {
-                    type: 'time',
-                    time: {
-                        unit: 'day',
-                        displayFormats: {
-                            day: 'MMM dd'
+    try {
+        console.log('Creating chart with', datasets.length, 'datasets');
+        
+        const chartConfig = {
+            type: 'line',
+            data: { datasets: datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                },
+                elements: {
+                    line: {
+                        borderWidth: 2
+                    },
+                    point: {
+                        radius: 0,
+                        hoverRadius: 5
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            parser: 'yyyy-MM-dd',
+                            displayFormats: {
+                                day: 'MMM dd',
+                                week: 'MMM dd',
+                                month: 'MMM yyyy',
+                                quarter: 'MMM yyyy',
+                                year: 'yyyy'
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: '{% trans "Date" %}'
+                        },
+                        ticks: {
+                            maxTicksLimit: 8,
+                            maxRotation: 45,
+                            minRotation: 0
                         }
                     },
-                    title: {
-                        display: true,
-                        text: '{% trans "Date" %}'
-                    }
-                },
-                y: {
-                    beginAtZero: false,
-                    title: {
-                        display: true,
-                        text: '{% trans "Price" %} (' + chartCurrency + ')'
-                    }
-                }
-            },
-            plugins: {
-                legend: {
-                    display: true,
-                    position: 'top'
-                },
-                tooltip: {
-                    mode: 'index',
-                    intersect: false,
-                    callbacks: {
-                        label: function(context) {
-                            return context.dataset.label + ': ' + chartCurrency + context.parsed.y.toFixed(2);
+                    y: {
+                        beginAtZero: false,
+                        title: {
+                            display: true,
+                            text: '{% if normalize_mode == "index100" %}{% trans "Index Value (Base: 1000)" %}{% else %}{% trans "Percentage Change from Start" %} (%){% endif %}'
+                        },
+                        ticks: {
+                            maxTicksLimit: 6,
+                            callback: function(value) {
+                                {% if normalize_mode == 'index100' %}
+                                    return value.toFixed(0);
+                                {% else %}
+                                    return value.toFixed(1) + '%';
+                                {% endif %}
+                            }
                         }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            label: function(context) {
+                                const value = context.parsed.y;
+                                const rawValue = context.raw.rawValue;
+                                let label = context.dataset.label + ': ';
+                                
+                                {% if normalize_mode == 'index100' %}
+                                    label += value.toFixed(2);
+                                    if (rawValue) {
+                                        label += ' ({{ base_currency }}' + rawValue.toFixed(2) + ')';
+                                    }
+                                    label += ' {% trans "index" %}';
+                                {% else %}
+                                    label += value.toFixed(2) + '%';
+                                    if (rawValue) {
+                                        label += ' ({{ base_currency }}' + rawValue.toFixed(2) + ')';
+                                    }
+                                    label += ' {% trans "return" %}';
+                                {% endif %}
+                                
+                                return label;
+                            }
+                        }
+                    },
+                    decimation: {
+                        enabled: true,
+                        algorithm: 'lttb',
+                        samples: 180
                     }
                 }
             }
-        }
-    });
+        };
+        
+        const chart = new Chart(ctx, chartConfig);
+        console.log('Chart created successfully');
+    } catch (error) {
+        console.error('Error creating chart:', error);
+        document.getElementById('comparisonChart').innerHTML = '<p class="text-center text-muted">{% trans "Error creating chart" %}</p>';
+    }
 } else {
     if (datasets.length === 0) {
         console.error('No datasets available for comparison chart');
@@ -351,6 +1478,197 @@ if (typeof Chart !== 'undefined' && datasets.length > 0) {
         console.error('Chart.js is not loaded');
         document.getElementById('comparisonChart').innerHTML = '<p class="text-center text-muted">{% trans "Chart library not loaded" %}</p>';
     }
+}
+</script>
+{% endif %}
+
+{% if symbols and comparison_result.efficient_frontier and comparison_result.efficient_frontier.success %}
+<script>
+// Efficient Frontier Chart
+const efCtx = document.getElementById('efficientFrontierChart').getContext('2d');
+
+// Prepare data for Efficient Frontier chart
+const efData = {
+    individualAssets: [],
+    efficientFrontier: [],
+    optimalPortfolios: []
+};
+
+// Add individual assets
+{% for symbol, stats in comparison_result.efficient_frontier.individual_stats.items %}
+efData.individualAssets.push({
+    label: '{{ symbol }}',
+    risk: {{ stats.risk|mul:100|floatformat:2 }},
+    return: {{ stats.expected_return|mul:100|floatformat:2 }},
+    sharpe: {{ stats.sharpe_ratio|floatformat:2 }}
+});
+{% endfor %}
+
+// Add Efficient Frontier curve points
+{% for point in comparison_result.efficient_frontier.efficient_frontier %}
+efData.efficientFrontier.push({
+    risk: {{ point.risk|mul:100|floatformat:2 }},
+    return: {{ point.expected_return|mul:100|floatformat:2 }},
+    sharpe: {{ point.sharpe_ratio|floatformat:2 }}
+});
+{% endfor %}
+
+// Add optimal portfolios
+efData.optimalPortfolios.push({
+    label: 'Min Risk',
+    risk: {{ comparison_result.efficient_frontier.min_risk_portfolio.risk|mul:100|floatformat:2 }},
+    return: {{ comparison_result.efficient_frontier.min_risk_portfolio.expected_return|mul:100|floatformat:2 }},
+    sharpe: {{ comparison_result.efficient_frontier.min_risk_portfolio.sharpe_ratio|floatformat:2 }},
+    color: 'rgb(40, 167, 69)' // Bootstrap success color
+});
+
+efData.optimalPortfolios.push({
+    label: 'Max Return',
+    risk: {{ comparison_result.efficient_frontier.max_return_portfolio.risk|mul:100|floatformat:2 }},
+    return: {{ comparison_result.efficient_frontier.max_return_portfolio.expected_return|mul:100|floatformat:2 }},
+    sharpe: {{ comparison_result.efficient_frontier.max_return_portfolio.sharpe_ratio|floatformat:2 }},
+    color: 'rgb(0, 123, 255)' // Bootstrap primary color
+});
+
+efData.optimalPortfolios.push({
+    label: 'Max Sharpe',
+    risk: {{ comparison_result.efficient_frontier.max_sharpe_portfolio.risk|mul:100|floatformat:2 }},
+    return: {{ comparison_result.efficient_frontier.max_sharpe_portfolio.expected_return|mul:100|floatformat:2 }},
+    sharpe: {{ comparison_result.efficient_frontier.max_sharpe_portfolio.sharpe_ratio|floatformat:2 }},
+    color: 'rgb(255, 193, 7)' // Bootstrap warning color
+});
+
+// Create Efficient Frontier chart
+if (typeof Chart !== 'undefined') {
+    try {
+        const efChart = new Chart(efCtx, {
+            type: 'scatter',
+            data: {
+                datasets: [
+                    // Individual assets
+                    {
+                        label: '{% trans "Individual Assets" %}',
+                        data: efData.individualAssets.map(asset => ({
+                            x: asset.risk,
+                            y: asset.return,
+                            label: asset.label,
+                            sharpe: asset.sharpe
+                        })),
+                        backgroundColor: 'rgba(108, 117, 125, 0.6)',
+                        borderColor: 'rgba(108, 117, 125, 1)',
+                        pointRadius: 8,
+                        pointHoverRadius: 10,
+                        showLine: false
+                    },
+                    // Efficient Frontier curve
+                    {
+                        label: '{% trans "Efficient Frontier" %}',
+                        data: efData.efficientFrontier.map(point => ({
+                            x: point.risk,
+                            y: point.return,
+                            sharpe: point.sharpe
+                        })),
+                        backgroundColor: 'rgba(0, 0, 0, 0)',
+                        borderColor: 'rgba(0, 0, 0, 0.8)',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        showLine: true,
+                        fill: false,
+                        tension: 0.1
+                    },
+                    // Optimal portfolios
+                    {
+                        label: '{% trans "Optimal Portfolios" %}',
+                        data: efData.optimalPortfolios.map(portfolio => ({
+                            x: portfolio.risk,
+                            y: portfolio.return,
+                            label: portfolio.label,
+                            sharpe: portfolio.sharpe,
+                            color: portfolio.color
+                        })),
+                        backgroundColor: efData.optimalPortfolios.map(p => p.color),
+                        borderColor: efData.optimalPortfolios.map(p => p.color),
+                        pointRadius: 12,
+                        pointHoverRadius: 15,
+                        showLine: false
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    intersect: false,
+                    mode: 'point'
+                },
+                scales: {
+                    x: {
+                        type: 'linear',
+                        position: 'bottom',
+                        title: {
+                            display: true,
+                            text: '{% trans "Risk (Annualized Volatility) %" %}'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                return value.toFixed(1) + '%';
+                            }
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: '{% trans "Expected Return %" %}'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                return value.toFixed(1) + '%';
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    },
+                    tooltip: {
+                        mode: 'point',
+                        callbacks: {
+                            title: function(context) {
+                                if (context[0].datasetIndex === 0) {
+                                    return context[0].raw.label; // Individual asset name
+                                } else if (context[0].datasetIndex === 2) {
+                                    return context[0].raw.label; // Optimal portfolio name
+                                } else {
+                                    return '{% trans "Efficient Frontier" %}';
+                                }
+                            },
+                            label: function(context) {
+                                const risk = context.raw.x.toFixed(2);
+                                const return_val = context.raw.y.toFixed(2);
+                                const sharpe = context.raw.sharpe ? context.raw.sharpe.toFixed(2) : 'N/A';
+                                return [
+                                    '{% trans "Risk:" %} ' + risk + '%',
+                                    '{% trans "Return:" %} ' + return_val + '%',
+                                    '{% trans "Sharpe Ratio:" %} ' + sharpe
+                                ];
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        console.log('Efficient Frontier chart created successfully');
+    } catch (error) {
+        console.error('Error creating Efficient Frontier chart:', error);
+        document.getElementById('efficientFrontierChart').innerHTML = '<p class="text-center text-muted">{% trans "Error creating Efficient Frontier chart" %}</p>';
+    }
+} else {
+    console.error('Chart.js is not loaded for Efficient Frontier chart');
+    document.getElementById('efficientFrontierChart').innerHTML = '<p class="text-center text-muted">{% trans "Chart library not loaded" %}</p>';
 }
 </script>
 {% endif %}
@@ -386,4 +1704,272 @@ function saveComparison() {
 }
 </script>
 {% endif %}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Symbol Selection Styles */
+.symbol-input-container {
+    position: relative;
+}
+
+.selected-symbols {
+    min-height: 40px;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    padding: 8px;
+    background-color: #f8f9fa;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+
+.symbol-tag {
+    display: inline-flex;
+    align-items: center;
+    background: linear-gradient(135deg, #007bff, #0056b3);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 16px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    box-shadow: 0 2px 4px rgba(0, 123, 255, 0.2);
+    transition: all 0.2s ease;
+}
+
+.symbol-tag:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 123, 255, 0.3);
+}
+
+.symbol-text {
+    margin-right: 6px;
+}
+
+.symbol-remove {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    padding: 0;
+    margin-left: 4px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    transition: background-color 0.2s ease;
+}
+
+.symbol-remove:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.symbol-search-input {
+    border-radius: 0.375rem;
+    border: 1px solid #dee2e6;
+    padding-left: 12px;
+    padding-right: 40px;
+}
+
+.symbol-search-input:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.search-loading {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #6c757d;
+    z-index: 10;
+}
+
+.search-results {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    background: white;
+}
+
+.search-results-content {
+    padding: 0;
+}
+
+.search-result-item {
+    padding: 12px 16px;
+    border-bottom: 1px solid #f8f9fa;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.search-result-item:hover {
+    background-color: #f8f9fa;
+}
+
+.search-result-item:last-child {
+    border-bottom: none;
+}
+
+.search-result-main {
+    flex: 1;
+}
+
+.search-result-symbol {
+    font-weight: 600;
+    color: #212529;
+    font-size: 0.95rem;
+}
+
+.search-result-name {
+    color: #6c757d;
+    font-size: 0.85rem;
+    margin-top: 2px;
+}
+
+.search-result-details {
+    color: #6c757d;
+    font-size: 0.8rem;
+    margin-top: 2px;
+}
+
+.search-result-badge {
+    margin-left: 8px;
+}
+
+.currency-badge {
+    display: inline-block;
+    background-color: #6c757d;
+    color: white;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 0.7rem;
+    font-weight: 500;
+    margin-left: 6px;
+}
+
+
+.search-result-price-change.positive {
+    color: #28a745;
+}
+
+.search-result-price-change.negative {
+    color: #dc3545;
+}
+
+.search-no-results {
+    padding: 20px;
+    text-align: center;
+    color: #6c757d;
+    font-style: italic;
+}
+
+
+/* Search Filters */
+.search-filters {
+    padding: 12px 16px;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.filter-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 8px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.filter-btn {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #495057;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.filter-btn:hover {
+    background: #e9ecef;
+    border-color: #adb5bd;
+    color: #212529;
+}
+
+.filter-btn.active {
+    background: #007bff;
+    border-color: #007bff;
+    color: white;
+}
+
+.filter-btn.active:hover {
+    background: #0056b3;
+    border-color: #0056b3;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .search-results {
+        max-height: 300px;
+    }
+    
+    .search-result-item {
+        padding: 10px 12px;
+    }
+    
+    .search-result-symbol {
+        font-size: 0.9rem;
+    }
+    
+    .search-result-name {
+        font-size: 0.8rem;
+    }
+}
+
+/* Animation for symbol tags */
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.symbol-tag {
+    animation: slideIn 0.3s ease;
+}
+
+/* Focus states */
+.symbol-search-input:focus + .search-loading {
+    color: #007bff;
+}
+
+/* Loading state */
+.search-loading.show {
+    display: block !important;
+}
+</style>
 {% endblock %}

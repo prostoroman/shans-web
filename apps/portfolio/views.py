@@ -19,7 +19,7 @@ from .mpt import (
 )
 from .forecast import calculate_portfolio_forecast
 from .llm import generate_portfolio_commentary
-from apps.data.services import get_instrument_data
+from .enhanced_service import get_portfolio_service
 
 logger = logging.getLogger(__name__)
 
@@ -36,12 +36,15 @@ def portfolio_form(request):
 
 
 def _process_portfolio_analysis(request):
-    """Process portfolio analysis form submission."""
+    """Process portfolio analysis form submission using enhanced service."""
     try:
         # Get form data
         symbols = request.POST.get('symbols', '').strip()
         weights = request.POST.get('weights', '').strip()
         analysis_type = request.POST.get('analysis_type', 'basic')
+        base_currency = request.POST.get('base_currency', 'USD').upper()
+        include_dividends = request.POST.get('include_dividends', 'true').lower() == 'true'
+        days = int(request.POST.get('days', 365))
         
         if not symbols or not weights:
             messages.error(request, _('Symbols and weights are required'))
@@ -61,74 +64,46 @@ def _process_portfolio_analysis(request):
             messages.error(request, _('Weights must sum to 1.0'))
             return redirect('portfolio:form')
         
-        # Get price data for all symbols
-        returns_matrix = []
-        instruments_data = {}
+        # Use enhanced portfolio service
+        portfolio_service = get_portfolio_service()
+        analysis_result = portfolio_service.analyze_portfolio(
+            symbol_list, weight_list, base_currency, include_dividends, days
+        )
         
-        for symbol in symbol_list:
-            data = get_instrument_data(symbol, include_prices=True)
-            if not data or not data['prices']:
-                messages.error(request, _('No price data available for {}').format(symbol))
-                return redirect('portfolio:form')
-            
-            instruments_data[symbol] = data
-            prices = [float(p.close_price) for p in data['prices']]
-            
-            # Calculate returns
-            returns = []
-            for i in range(1, len(prices)):
-                ret = (prices[i] - prices[i-1]) / prices[i-1]
-                returns.append(ret)
-            
-            returns_matrix.append(returns)
-        
-        # Align returns (use minimum length)
-        min_length = min(len(returns) for returns in returns_matrix)
-        aligned_returns = [returns[:min_length] for returns in returns_matrix]
-        
-        # Calculate portfolio metrics
-        mean_returns = calculate_mean_returns(aligned_returns)
-        cov_matrix = calculate_covariance_matrix(aligned_returns)
-        
-        # Portfolio optimization
-        optimization_results = {}
-        
-        if analysis_type in ['advanced', 'pro']:
-            # Minimum variance portfolio
-            min_var_result = calculate_minimum_variance_portfolio(cov_matrix)
-            if min_var_result.get('success'):
-                optimization_results['minimum_variance'] = min_var_result
-            
-            # Tangency portfolio (max Sharpe)
-            tangency_result = calculate_tangency_portfolio(mean_returns, cov_matrix, settings.DEFAULT_RF)
-            if tangency_result.get('success'):
-                optimization_results['tangency'] = tangency_result
-            
-            # Efficient frontier
-            efficient_frontier = calculate_efficient_frontier(mean_returns, cov_matrix, num_portfolios=50)
-            optimization_results['efficient_frontier'] = efficient_frontier
-        
-        # Current portfolio metrics
-        current_metrics = {
-            'expected_return': sum(weight_list[i] * mean_returns[i] for i in range(len(weight_list))),
-            'volatility': 0.0,  # Calculate portfolio volatility
-        }
-        
-        # Calculate portfolio volatility
-        portfolio_variance = 0
-        for i in range(len(weight_list)):
-            for j in range(len(weight_list)):
-                portfolio_variance += weight_list[i] * weight_list[j] * cov_matrix[i][j]
-        
-        current_metrics['volatility'] = portfolio_variance ** 0.5
-        current_metrics['sharpe_ratio'] = (current_metrics['expected_return'] - settings.DEFAULT_RF) / current_metrics['volatility']
+        if 'error' in analysis_result:
+            messages.error(request, analysis_result['error'])
+            return redirect('portfolio:form')
         
         # Generate forecast
         forecast_results = {}
         if analysis_type in ['advanced', 'pro']:
-            forecast_results = calculate_portfolio_forecast(
-                weight_list, aligned_returns, periods=30, method='ewma'
-            )
+            # Use existing forecast function with aligned returns
+            returns_matrix = []
+            for symbol in symbol_list:
+                # Get returns from analysis result
+                if symbol in analysis_result.get('asset_metrics', {}):
+                    # We need to get the actual returns for forecasting
+                    from apps.markets.assets import AssetFactory
+                    asset = AssetFactory.create_asset(symbol)
+                    price_history = asset.get_price_history(days)
+                    if price_history:
+                        returns = []
+                        price_history.sort(key=lambda x: x.get('date', ''))
+                        for i in range(1, len(price_history)):
+                            prev_price = float(price_history[i-1].get('price', price_history[i-1].get('close', 0)))
+                            curr_price = float(price_history[i].get('price', price_history[i].get('close', 0)))
+                            if prev_price > 0:
+                                returns.append((curr_price - prev_price) / prev_price)
+                        returns_matrix.append(returns)
+            
+            if returns_matrix:
+                # Align returns
+                min_length = min(len(returns) for returns in returns_matrix)
+                aligned_returns = [returns[:min_length] for returns in returns_matrix]
+                
+                forecast_results = calculate_portfolio_forecast(
+                    weight_list, aligned_returns, periods=30, method='ewma'
+                )
         
         # Generate LLM commentary
         commentary = None
@@ -139,8 +114,8 @@ def _process_portfolio_analysis(request):
                     {'symbol': symbol, 'weight': weight}
                     for symbol, weight in zip(symbol_list, weight_list)
                 ],
-                'metrics': current_metrics,
-                'optimization': optimization_results,
+                'metrics': analysis_result.get('portfolio_metrics', {}),
+                'optimization': analysis_result.get('optimization_results', {}),
             }
             commentary = generate_portfolio_commentary(portfolio_data, user_plan)
         
@@ -148,12 +123,14 @@ def _process_portfolio_analysis(request):
         saved_portfolio = None
         if request.user.is_authenticated:
             try:
+                portfolio_metrics = analysis_result.get('portfolio_metrics', {})
                 saved_portfolio = Portfolio.objects.create(
                     user=request.user,
-                    name=f"Analysis {len(symbol_list)} symbols",
-                    expected_return=current_metrics['expected_return'],
-                    volatility=current_metrics['volatility'],
-                    sharpe_ratio=current_metrics['sharpe_ratio']
+                    name=f"Analysis {len(symbol_list)} assets",
+                    expected_return=portfolio_metrics.get('expected_return'),
+                    volatility=portfolio_metrics.get('volatility'),
+                    sharpe_ratio=portfolio_metrics.get('sharpe_ratio'),
+                    max_drawdown=portfolio_metrics.get('max_drawdown')
                 )
                 
                 # Create positions
@@ -170,19 +147,23 @@ def _process_portfolio_analysis(request):
             'title': _('Portfolio Analysis Results'),
             'symbols': symbol_list,
             'weights': weight_list,
-            'instruments_data': instruments_data,
-            'current_metrics': current_metrics,
-            'optimization_results': optimization_results,
+            'base_currency': base_currency,
+            'include_dividends': include_dividends,
+            'days': days,
+            'analysis_result': analysis_result,
+            'portfolio_metrics': analysis_result.get('portfolio_metrics', {}),
+            'asset_metrics': analysis_result.get('asset_metrics', {}),
+            'optimization_results': analysis_result.get('optimization_results', {}),
+            'correlation_matrix': analysis_result.get('correlation_matrix', {}),
             'forecast_results': forecast_results,
             'commentary': commentary,
             'saved_portfolio': saved_portfolio,
-            'analysis_type': analysis_type,
         }
         
         return render(request, 'portfolio/result.html', context)
         
     except Exception as e:
-        logger.error(f"Error in portfolio analysis: {e}")
+        logger.error(f"Error processing portfolio analysis: {e}")
         messages.error(request, _('Error processing portfolio analysis'))
         return redirect('portfolio:form')
 
@@ -225,5 +206,8 @@ def delete_portfolio(request, portfolio_id):
         messages.success(request, _('Portfolio deleted successfully'))
     except Portfolio.DoesNotExist:
         messages.error(request, _('Portfolio not found'))
+    except Exception as e:
+        logger.error(f"Error deleting portfolio: {e}")
+        messages.error(request, _('Error deleting portfolio'))
     
     return redirect('portfolio:list')

@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework import status, serializers
 from django.http import JsonResponse
 from django.utils.translation import gettext_lazy as _
+from django.db import models
 import logging
 
 from apps.data.services import get_instrument_data
@@ -14,6 +15,7 @@ from apps.markets.metrics import calculate_metrics
 from django.conf import settings
 from apps.core.throttling import PlanRateThrottle, BasicAnonThrottle
 from apps.data import fmp_client
+from apps.data.models import Exchange, Commodity
 
 
 class HistoryAPIView(APIView):
@@ -161,78 +163,480 @@ class CompareAPIView(APIView):
 
     class Payload(serializers.Serializer):
         symbols = serializers.ListField(child=serializers.CharField(max_length=12), min_length=2, max_length=5)
+        base_currency = serializers.CharField(max_length=3, default='USD')
+        include_dividends = serializers.BooleanField(default=True)
+        period = serializers.CharField(max_length=10, default='1Y')
+        normalize_mode = serializers.CharField(max_length=20, default='index100')
 
     def post(self, request):
         payload = self.Payload(data=request.data)
         payload.is_valid(raise_exception=True)
+        
         symbol_list = [s.upper() for s in payload.validated_data['symbols']]
+        base_currency = payload.validated_data['base_currency'].upper()
+        include_dividends = payload.validated_data['include_dividends']
+        period = payload.validated_data['period']
+        normalize_mode = payload.validated_data['normalize_mode']
 
         if not symbol_list:
             return Response({'error': _('Symbols parameter is required')}, status=status.HTTP_400_BAD_REQUEST)
         
+        # Validate base currency
+        from .currency_converter import get_currency_converter
+        currency_converter = get_currency_converter()
+        if not currency_converter.is_currency_supported(base_currency):
+            return Response(
+                {'error': _('Unsupported currency: {}').format(base_currency)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         try:
-            # Get data for all symbols
-            instruments_data = {}
-            all_metrics = {}
+            # Use the new comparison service
+            from .comparison_service import get_comparison_service
             
-            for symbol in symbol_list:
-                data = get_instrument_data(symbol, include_prices=True, include_fundamentals=True)
-                if data:
-                    instruments_data[symbol] = data
-                    
-                    # Calculate metrics
-                    if data['prices']:
-                        price_values = [float(p.close_price) for p in data['prices']]
-                        metrics = calculate_metrics(
-                            price_values,
-                            risk_free_rate=settings.DEFAULT_RF,
-                            years=5.0
-                        )
-                        all_metrics[symbol] = metrics
+            comparison_service = get_comparison_service()
+            comparison_result = comparison_service.compare_assets(
+                symbol_list, 
+                base_currency=base_currency,
+                include_dividends=include_dividends,
+                period=period,
+                normalize_mode=normalize_mode
+            )
             
-            # Calculate correlation matrix
-            correlation_matrix = {}
-            if len(symbol_list) >= 2:
-                for i, symbol1 in enumerate(symbol_list):
-                    for j, symbol2 in enumerate(symbol_list):
-                        if i < j and symbol1 in all_metrics and symbol2 in all_metrics:
-                            # This is a simplified correlation calculation
-                            # In a real implementation, you'd align the price series
-                            correlation_matrix[f"{symbol1}_{symbol2}"] = 0.5  # Placeholder
+            if 'error' in comparison_result:
+                return Response(
+                    {'error': comparison_result['error']},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             
-            # Prepare response: 5 KPIs per symbol
-            compare_data = {}
-            for symbol in symbol_list:
-                m = all_metrics.get(symbol, {})
-                km = fmp_client.get_key_metrics(symbol) or {}
-                compare_data[symbol] = {
-                    'cagr_5y': m.get('cagr'),
-                    'vol': m.get('volatility'),
-                    'maxdd': m.get('max_drawdown'),
-                    'sharpe': m.get('sharpe_ratio'),
-                    'valuation': {
-                        'pe': km.get('peRatio') or km.get('pe'),
-                        'pb': km.get('priceToBookRatio') or km.get('pb'),
-                    },
-                    'mini': {
-                        'pe_percentile': None,
-                        'roe_percentile': None,
-                    }
-                }
-            response_data = {
-                'symbols': symbol_list,
-                'kpis': compare_data,
-                'correlation_matrix': correlation_matrix,
-            }
-            
-            return Response(response_data)
+            return Response(comparison_result)
             
         except Exception as e:
-            logger.error(f"Error in compare API for {symbol_list}: {e}")
+            logger.error(f"Error in compare API: {e}")
             return Response(
-                {'error': _('Internal server error')},
+                {'error': _('Error processing comparison request')},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
     def get(self, request):
         return Response({'error': _('Symbols parameter is required')}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class CommoditiesAPIView(APIView):
+    """GET /api/v1/commodities/<symbol> - Get commodities quote data"""
+    throttle_classes = [PlanRateThrottle, BasicAnonThrottle]
+
+    def get(self, request, symbol: str = ""):
+        symbol = (symbol or request.GET.get('symbol', '')).upper()
+        
+        if not symbol:
+            return Response(
+                {'error': _('Symbol parameter is required')},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Get commodities quote data
+            quote_data = fmp_client.get_commodities_quote(symbol)
+            if not quote_data:
+                return Response(
+                    {'error': _('Commodity symbol not found')},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Format response data similar to MarketAPIView for consistency
+            response_data = {
+                'symbol': quote_data.get('symbol', symbol),
+                'name': quote_data.get('name', symbol),
+                
+                'quote': {
+                    'price': quote_data.get('price'),
+                    'changesPercentage': quote_data.get('changePercentage'),
+                    'change': quote_data.get('change'),
+                    'dayLow': quote_data.get('dayLow'),
+                    'dayHigh': quote_data.get('dayHigh'),
+                    'volume': quote_data.get('volume'),
+                    'marketCap': quote_data.get('marketCap'),
+                    'exchange': quote_data.get('exchange', 'Commodity Exchange'),
+                },
+                
+                'profile': {
+                    'name': quote_data.get('name', symbol),
+                    'exchange': quote_data.get('exchange', 'Commodity Exchange'),
+                    'currency': 'USD',  # Most commodities are in USD
+                    'stockType': 'Commodity',
+                },
+            }
+            
+            return Response(response_data)
+            
+        except Exception as e:
+            logger.error(f"Error in commodities API for {symbol}: {e}")
+            return Response(
+                {'error': _('Internal server error')},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class CommoditiesSearchAPIView(APIView):
+    """GET /api/v1/commodities/search?q=<query> - Search available commodities"""
+    throttle_classes = [PlanRateThrottle, BasicAnonThrottle]
+
+    def get(self, request):
+        query = request.GET.get('q', '').strip()
+        
+        try:
+            # Search commodities
+            commodities = fmp_client.search_commodities(query)
+            
+            response_data = {
+                'query': query,
+                'commodities': commodities,
+                'count': len(commodities),
+            }
+            
+            return Response(response_data)
+            
+        except Exception as e:
+            logger.error(f"Error in commodities search API for {query}: {e}")
+            return Response(
+                {'error': _('Internal server error')},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class ForexAPIView(APIView):
+    """GET /api/v1/forex/<symbol> - Get forex quote data"""
+    throttle_classes = [PlanRateThrottle, BasicAnonThrottle]
+
+    def get(self, request, symbol: str = ""):
+        symbol = (symbol or request.GET.get('symbol', '')).upper()
+        
+        if not symbol:
+            return Response(
+                {'error': _('Symbol parameter is required')},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Get forex quote data
+            quote_data = fmp_client.get_forex_quote(symbol)
+            if not quote_data:
+                return Response(
+                    {'error': _('Forex symbol not found')},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Format response data similar to MarketAPIView for consistency
+            response_data = {
+                'symbol': quote_data.get('symbol', symbol),
+                'name': quote_data.get('name', symbol),
+                
+                'quote': {
+                    'price': quote_data.get('price'),
+                    'changesPercentage': quote_data.get('changePercentage'),
+                    'change': quote_data.get('change'),
+                    'dayLow': quote_data.get('dayLow'),
+                    'dayHigh': quote_data.get('dayHigh'),
+                    'volume': quote_data.get('volume'),
+                    'exchange': quote_data.get('exchange', 'Forex Exchange'),
+                },
+                
+                'profile': {
+                    'name': quote_data.get('name', symbol),
+                    'exchange': quote_data.get('exchange', 'Forex Exchange'),
+                    'currency': 'USD',  # Most forex pairs are quoted against USD
+                    'stockType': 'Forex',
+                },
+            }
+            
+            return Response(response_data)
+            
+        except Exception as e:
+            logger.error(f"Error in forex API for {symbol}: {e}")
+            return Response(
+                {'error': _('Internal server error')},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class ForexSearchAPIView(APIView):
+    """GET /api/v1/forex/search?q=<query> - Search available forex currency pairs"""
+    throttle_classes = [PlanRateThrottle, BasicAnonThrottle]
+
+    def get(self, request):
+        query = request.GET.get('q', '').strip()
+        
+        try:
+            # Search forex currency pairs
+            forex_pairs = fmp_client.search_forex(query)
+            
+            response_data = {
+                'query': query,
+                'forex_pairs': forex_pairs,
+                'count': len(forex_pairs),
+            }
+            
+            return Response(response_data)
+            
+        except Exception as e:
+            logger.error(f"Error in forex search API for {query}: {e}")
+            return Response(
+                {'error': _('Internal server error')},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class SymbolSearchAPIView(APIView):
+    """GET /api/v1/search?q=<query> - Optimized symbol search using FMP stable endpoints"""
+    # Temporarily disable throttling for development
+    throttle_classes = []
+
+    def get(self, request):
+        query = request.GET.get('q', '').strip()
+        limit = min(int(request.GET.get('limit', 20)), 50)  # Cap at 50 results
+        
+        if not query or len(query) < 2:
+            return Response({
+                'query': query,
+                'results': [],
+                'count': 0,
+                'message': _('Please enter at least 2 characters to search')
+            })
+        
+        try:
+            results = []
+            query_upper = query.upper()
+            
+            # 1. Check if query looks like an ISIN (12 alphanumeric characters)
+            if len(query) == 12 and query.isalnum():
+                try:
+                    isin_results = fmp_client.search_by_isin(query)
+                    for item in isin_results[:limit]:
+                        symbol = item.get('symbol', '')
+                        if symbol:
+                            # Get profile for additional data
+                            profile = fmp_client.get_profile(symbol)
+                            if profile:
+                                asset_type = 'etf' if profile.get('isEtf') or profile.get('isFund') else 'stock'
+                                results.append({
+                                    'symbol': symbol,
+                                    'name': profile.get('companyName', item.get('name', '')),
+                                    'currency': profile.get('currency', item.get('currency', 'USD')),
+                                    'exchangeFullName': profile.get('exchange', item.get('exchange', '')),
+                                    'exchange': profile.get('exchange', item.get('exchange', '')),
+                                    'type': asset_type,
+                                    'score': 100  # ISIN search gets highest priority
+                                })
+                            else:
+                                # Fallback if profile lookup fails
+                                results.append({
+                                    'symbol': symbol,
+                                    'name': item.get('name', ''),
+                                    'currency': item.get('currency', 'USD'),
+                                    'exchangeFullName': item.get('exchange', ''),
+                                    'exchange': item.get('exchange', ''),
+                                    'type': 'stock',
+                                    'score': 95
+                                })
+                except Exception as e:
+                    logger.warning(f"Error searching ISIN for {query}: {e}")
+            
+            # 2. Try symbol search first (most efficient)
+            if not results:
+                try:
+                    symbol_results = fmp_client.search_symbols(query)
+                    for item in symbol_results[:limit]:
+                        symbol = item.get('symbol', '')
+                        if symbol:
+                            # Get profile for additional data
+                            profile = fmp_client.get_profile(symbol)
+                            if profile:
+                                asset_type = 'etf' if profile.get('isEtf') or profile.get('isFund') else 'stock'
+                                results.append({
+                                    'symbol': symbol,
+                                    'name': profile.get('companyName', item.get('name', '')),
+                                    'currency': profile.get('currency', item.get('currency', 'USD')),
+                                    'exchangeFullName': profile.get('exchange', item.get('exchange', '')),
+                                    'exchange': profile.get('exchange', item.get('exchange', '')),
+                                    'type': asset_type,
+                                    'score': 100 if symbol.upper() == query_upper else 90
+                                })
+                            else:
+                                # Fallback if profile lookup fails
+                                results.append({
+                                    'symbol': symbol,
+                                    'name': item.get('name', ''),
+                                    'currency': item.get('currency', 'USD'),
+                                    'exchangeFullName': item.get('exchange', ''),
+                                    'exchange': item.get('exchange', ''),
+                                    'type': 'stock',
+                                    'score': 85
+                                })
+                except Exception as e:
+                    logger.warning(f"Error searching symbols for {query}: {e}")
+            
+            # 3. Try commodities search from database (always search commodities)
+            try:
+                # Search commodities in database
+                commodities = Commodity.objects.filter(
+                    is_active=True
+                ).filter(
+                    models.Q(symbol__icontains=query) | 
+                    models.Q(name__icontains=query)
+                )[:5]  # Limit to 5 commodities to avoid overwhelming results
+                
+                for commodity in commodities:
+                    results.append({
+                        'symbol': commodity.symbol,
+                        'name': commodity.name,
+                        'currency': commodity.currency,
+                        'exchange': 'COMMODITY',
+                        'exchangeFullName': 'Commodity Exchange',
+                        'type': 'commodity',
+                        'score': 98 if commodity.symbol.upper() == query_upper else 90
+                    })
+            except Exception as e:
+                logger.warning(f"Error searching commodities for {query}: {e}")
+            
+            # 4. Try cryptocurrencies search
+            if not results:
+                try:
+                    crypto_results = fmp_client.search_cryptocurrencies(query)
+                    for item in crypto_results[:limit]:
+                        symbol = item.get('symbol', '')
+                        if symbol:
+                            results.append({
+                                'symbol': symbol,
+                                'name': item.get('name', symbol),
+                                'currency': 'USD',  # Most crypto quotes are in USD
+                                'exchange': 'CCC',  # Cryptocurrency exchange
+                                'exchangeFullName': 'Cryptocurrency Exchange',
+                                'type': 'cryptocurrency',
+                                'score': 95 if symbol.upper() == query_upper else 85
+                            })
+                except Exception as e:
+                    logger.warning(f"Error searching cryptocurrencies for {query}: {e}")
+            
+            # 5. Try forex search
+            if not results:
+                try:
+                    forex_results = fmp_client.search_forex(query)
+                    for item in forex_results[:limit]:
+                        symbol = item.get('symbol', '')
+                        if symbol:
+                            results.append({
+                                'symbol': symbol,
+                                'name': item.get('name', symbol),
+                                'currency': 'USD',  # Most forex pairs are quoted against USD
+                                'exchange': 'FOREX',
+                                'exchangeFullName': 'Foreign Exchange',
+                                'type': 'forex',
+                                'score': 95 if symbol.upper() == query_upper else 85
+                            })
+                except Exception as e:
+                    logger.warning(f"Error searching forex for {query}: {e}")
+            
+            # 6. If no results from symbol search, try company name search
+            if not results:
+                try:
+                    company_results = fmp_client.search_by_company_name(query)
+                    for item in company_results[:limit]:
+                        symbol = item.get('symbol', '')
+                        if symbol:
+                            # Get profile for additional data
+                            profile = fmp_client.get_profile(symbol)
+                            if profile:
+                                asset_type = 'etf' if profile.get('isEtf') or profile.get('isFund') else 'stock'
+                                results.append({
+                                    'symbol': symbol,
+                                    'name': profile.get('companyName', item.get('name', '')),
+                                    'currency': profile.get('currency', item.get('currency', 'USD')),
+                                    'exchangeFullName': profile.get('exchange', item.get('exchange', '')),
+                                    'exchange': profile.get('exchange', item.get('exchange', '')),
+                                    'type': asset_type,
+                                    'score': 80
+                                })
+                            else:
+                                # Fallback if profile lookup fails
+                                results.append({
+                                    'symbol': symbol,
+                                    'name': item.get('name', ''),
+                                    'currency': item.get('currency', 'USD'),
+                                    'exchangeFullName': item.get('exchange', ''),
+                                    'exchange': item.get('exchange', ''),
+                                    'type': 'stock',
+                                    'score': 75
+                                })
+                except Exception as e:
+                    logger.warning(f"Error searching companies for {query}: {e}")
+            
+            # Sort by score (highest first) and limit results
+            results.sort(key=lambda x: x.get('score', 0), reverse=True)
+            results = results[:limit]
+            
+            # Get categories for filtering
+            categories = {}
+            for result in results:
+                asset_type = result.get('type', '')
+                if asset_type:
+                    # Convert to plural form for consistency with frontend
+                    if asset_type == 'stock':
+                        categories['stocks'] = categories.get('stocks', 0) + 1
+                    elif asset_type == 'etf':
+                        categories['etfs'] = categories.get('etfs', 0) + 1
+                    elif asset_type == 'commodity':
+                        categories['commodities'] = categories.get('commodities', 0) + 1
+                    elif asset_type == 'cryptocurrency':
+                        categories['cryptocurrencies'] = categories.get('cryptocurrencies', 0) + 1
+                    elif asset_type == 'forex':
+                        categories['forex'] = categories.get('forex', 0) + 1
+            
+            return Response({
+                'query': query,
+                'results': results,
+                'count': len(results),
+                'categories': categories
+            })
+            
+        except Exception as e:
+            logger.error(f"Error in symbol search for {query}: {e}")
+            return Response({
+                'query': query,
+                'results': [],
+                'count': 0,
+                'error': _('Search failed. Please try again.')
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class ExchangeAPIView(APIView):
+    """GET /api/v1/exchanges/ - Get list of available exchanges"""
+    throttle_classes = [PlanRateThrottle, BasicAnonThrottle]
+
+    def get(self, request):
+        try:
+            exchanges = Exchange.objects.filter(is_active=True).order_by('name')
+            
+            exchange_data = []
+            for exchange in exchanges:
+                exchange_data.append({
+                    'code': exchange.code,
+                    'name': exchange.name,
+                    'country_name': exchange.country_name,
+                    'country_code': exchange.country_code,
+                    'symbol_suffix': exchange.symbol_suffix,
+                    'delay': exchange.delay,
+                })
+            
+            return Response({
+                'exchanges': exchange_data,
+                'count': len(exchange_data)
+            })
+            
+        except Exception as e:
+            logger.error(f"Error in exchange API: {e}")
+            return Response({
+                'exchanges': [],
+                'count': 0,
+                'error': _('Failed to fetch exchanges')
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

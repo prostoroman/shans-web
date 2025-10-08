@@ -12,14 +12,26 @@ from django.urls import reverse
 from django.conf import settings
 import logging
 
+from apps.data.fmp_client import get_actively_trading_list
+
 logger = logging.getLogger(__name__)
 
 
 def home(request):
     """Home page view."""
+    # Get actively trading list
+    actively_trading = []
+    try:
+        actively_trading = get_actively_trading_list()
+        # Limit to first 20 items for better performance
+        actively_trading = actively_trading[:20]
+    except Exception as e:
+        logger.error(f"Error loading actively trading list: {e}")
+    
     context = {
         'title': _('shans.ai - Financial Analysis Platform'),
         'description': _('Professional financial analysis, portfolio optimization, and market insights.'),
+        'actively_trading': actively_trading,
     }
     return render(request, 'core/home.html', context)
 

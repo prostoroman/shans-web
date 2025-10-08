@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load i18n %}
+{% load markets_extras %}
 
 {% block title %}{% if show_search_form %}{% trans "Stock Information Search" %}{% else %}{{ symbol }}{% if instrument %} - {{ instrument.name }}{% endif %}{% endif %} - shans.ai{% endblock %}
 
@@ -14,20 +15,57 @@
                     <h4 class="mb-0">{% trans "Stock Information Search" %}</h4>
                 </div>
                 <div class="card-body">
-                    <p class="text-muted">{% trans "Enter a stock symbol to view detailed information, metrics, and analysis." %}</p>
+                    <p class="text-muted">{% trans "Search for stocks, ETFs, and commodities by symbol, company name, ISIN, ETF name, or commodity symbol to view detailed information, metrics, and analysis. Powered by Financial Modeling Prep API." %}</p>
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>{% trans "Search Tips:" %}</strong>
+                        <ul class="mb-0 mt-2">
+                            <li>{% trans "Symbol search works best (e.g., AAPL, MSFT, GOOGL)" %}</li>
+                            <li>{% trans "Company name search works for full names (e.g., 'Gazprom', 'Apple Inc')" %}</li>
+                            <li>{% trans "ISIN search works for international securities" %}</li>
+                            <li>{% trans "ETF search works for ETF symbols and names (e.g., SPY, VTI, QQQ)" %}</li>
+                            <li>{% trans "Commodity search works for commodity symbols (e.g., GCUSD, SILUSD, CLUSD)" %}</li>
+                            <li>{% trans "Cryptocurrency search works for crypto symbols (e.g., BTCUSD, ETHUSD, ADAUSD)" %}</li>
+                            <li>{% trans "Forex search works for currency pairs (e.g., EURUSD, GBPUSD, USDJPY)" %}</li>
+                        </ul>
+                    </div>
                     <form method="get" action="{% url 'markets:info' %}">
                         <div class="row">
                             <div class="col-md-8">
                                 <div class="input-group">
+                                    <select class="form-select" name="search_type" style="max-width: 120px;">
+                                        <option value="symbol" {% if search_type == 'symbol' or not search_type %}selected{% endif %}>{% trans "Symbol" %}</option>
+                                        <option value="company" {% if search_type == 'company' %}selected{% endif %}>{% trans "Company" %}</option>
+                                        <option value="isin" {% if search_type == 'isin' %}selected{% endif %}>{% trans "ISIN" %}</option>
+                                        <option value="etf" {% if search_type == 'etf' %}selected{% endif %}>{% trans "ETF" %}</option>
+                                        <option value="commodity" {% if search_type == 'commodity' %}selected{% endif %}>{% trans "Commodity" %}</option>
+                                        <option value="cryptocurrency" {% if search_type == 'cryptocurrency' %}selected{% endif %}>{% trans "Cryptocurrency" %}</option>
+                                        <option value="forex" {% if search_type == 'forex' %}selected{% endif %}>{% trans "Forex" %}</option>
+                                    </select>
                                     <input type="text" 
                                            class="form-control" 
-                                           name="symbol" 
-                                           placeholder="{% trans 'Enter stock symbol (e.g., AAPL, MSFT, GOOGL)' %}"
-                                           value="{{ symbol }}"
+                                           name="query" 
+                                           id="search-input"
+                                           placeholder="{% trans 'Enter search term...' %}"
+                                           value="{{ query }}"
                                            required>
                                     <button class="btn btn-primary" type="submit">
                                         <i class="fas fa-search me-2"></i>{% trans "Search" %}
                                     </button>
+                                </div>
+                                <div class="form-text mt-2">
+                                    <small class="text-muted">
+                                        <strong>{% trans "Examples:" %}</strong><br>
+                                        <span id="search-examples">
+                                            <span class="symbol-example">{% trans "Symbol:" %} AAPL, MSFT, GOOGL, TSLA</span><br>
+                                            <span class="company-example" style="display: none;">{% trans "Company:" %} Gazprom, Apple Inc, Microsoft</span><br>
+                                            <span class="isin-example" style="display: none;">{% trans "ISIN:" %} US0378331005 (Apple), US5949181045 (Microsoft)</span><br>
+                                            <span class="etf-example" style="display: none;">{% trans "ETF:" %} SPY, VTI, QQQ, ARKK</span><br>
+                                            <span class="commodity-example" style="display: none;">{% trans "Commodity:" %} GCUSD (Gold), SILUSD (Silver), CLUSD (Crude Oil), HGUSD (Copper)</span>
+                                            <span class="cryptocurrency-example" style="display: none;">{% trans "Cryptocurrency:" %} BTCUSD (Bitcoin), ETHUSD (Ethereum), ADAUSD (Cardano), SOLUSD (Solana)</span>
+                                            <span class="forex-example" style="display: none;">{% trans "Forex:" %} EURUSD (Euro/USD), GBPUSD (Pound/USD), USDJPY (USD/Yen), AUDUSD (Aussie/USD)</span>
+                                        </span>
+                                    </small>
                                 </div>
                             </div>
                         </div>
@@ -41,10 +79,124 @@
                             <a href="{% url 'markets:info_symbol' symbol='TSLA' %}" class="btn btn-outline-secondary btn-sm">TSLA</a>
                             <a href="{% url 'markets:info_symbol' symbol='AMZN' %}" class="btn btn-outline-secondary btn-sm">AMZN</a>
                             <a href="{% url 'markets:info_symbol' symbol='META' %}" class="btn btn-outline-secondary btn-sm">META</a>
+                            <a href="{% url 'markets:info_symbol' symbol='GCUSD' %}" class="btn btn-outline-warning btn-sm">GCUSD</a>
+                            <a href="{% url 'markets:info_symbol' symbol='SILUSD' %}" class="btn btn-outline-secondary btn-sm">SILUSD</a>
+                            <a href="{% url 'markets:info_symbol' symbol='CLUSD' %}" class="btn btn-outline-dark btn-sm">CLUSD</a>
+                            <a href="{% url 'markets:info_symbol' symbol='BTCUSD' %}" class="btn btn-outline-warning btn-sm">BTCUSD</a>
+                            <a href="{% url 'markets:info_symbol' symbol='ETHUSD' %}" class="btn btn-outline-info btn-sm">ETHUSD</a>
                         </div>
+                    </div>
+                    
+                    <!-- JavaScript for Search Type Examples -->
+                    <script>
+                    document.addEventListener('DOMContentLoaded', function() {
+                        const searchTypeSelect = document.querySelector('select[name="search_type"]');
+                        const searchExamples = document.getElementById('search-examples');
+                        
+                        if (searchTypeSelect && searchExamples) {
+                            function showExamples() {
+                                const selectedType = searchTypeSelect.value;
+                                const examples = searchExamples.querySelectorAll('.symbol-example, .company-example, .isin-example, .etf-example, .commodity-example, .cryptocurrency-example, .forex-example');
+                                
+                                // Hide all examples
+                                examples.forEach(example => {
+                                    example.style.display = 'none';
+                                });
+                                
+                                // Show selected type example
+                                const selectedExample = searchExamples.querySelector('.' + selectedType + '-example');
+                                if (selectedExample) {
+                                    selectedExample.style.display = 'block';
+                                }
+                            }
+                            
+                            searchTypeSelect.addEventListener('change', showExamples);
+                            showExamples(); // Show initial example
+                        }
+                    });
+                    </script>
+                </div>
+            </div>
+            
+            <!-- Search Results -->
+            {% if search_results %}
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-search me-2"></i>{% trans "Search Results" %}
+                        <small class="text-muted">({% if search_type == 'symbol' %}{% trans "Symbol" %}{% elif search_type == 'company' %}{% trans "Company Name" %}{% elif search_type == 'isin' %}{% trans "ISIN" %}{% elif search_type == 'etf' %}{% trans "ETF" %}{% elif search_type == 'commodity' %}{% trans "Commodity" %}{% endif %}: "{{ query }}")</small>
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        {% for result in search_results %}
+                        <div class="col-md-6 col-lg-4 mb-3">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h6 class="card-title">
+                                        <a href="{% url 'markets:info_symbol' symbol=result.symbol %}" class="text-decoration-none">
+                                            {{ result.symbol }}
+                                        </a>
+                                    </h6>
+                                    <p class="card-text">
+                                        <strong>{{ result.name }}</strong><br>
+                                        {% if result.exchange %}
+                                            <small class="text-muted">{{ result.exchange }}</small><br>
+                                        {% endif %}
+                                        {% if result.currency %}
+                                            <small class="text-muted">{{ result.currency }}</small>
+                                        {% endif %}
+                                        {% if result.marketCap %}
+                                            <br><small class="text-success">Market Cap: ${{ result.marketCap|floatformat:0 }}</small>
+                                        {% endif %}
+                                        {% if result.isin %}
+                                            <br><small class="text-info">ISIN: {{ result.isin }}</small>
+                                        {% endif %}
+                                    </p>
+                                </div>
+                                <div class="card-footer">
+                                    <a href="{% url 'markets:info_symbol' symbol=result.symbol %}" class="btn btn-primary btn-sm">
+                                        <i class="fas fa-chart-line me-1"></i>{% trans "View Details" %}
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
                     </div>
                 </div>
             </div>
+            {% endif %}
+            
+            <!-- No Results Message -->
+            {% if no_results %}
+            <div class="card mt-4">
+                <div class="card-body text-center">
+                    <i class="fas fa-search fa-3x text-muted mb-3"></i>
+                    <h5>{% trans "No Results Found" %}</h5>
+                    <p class="text-muted">
+                        {% trans "No stocks found for" %} 
+                        {% if search_type == 'symbol' %}{% trans "symbol" %}{% elif search_type == 'company' %}{% trans "company name" %}{% elif search_type == 'isin' %}{% trans "ISIN" %}{% elif search_type == 'etf' %}{% trans "ETF" %}{% endif %}: 
+                        <strong>"{{ query }}"</strong>
+                    </p>
+                    <p class="text-muted">
+                        {% trans "Please try:" %}
+                        <ul class="list-unstyled mt-2">
+                            <li>{% trans "Check your spelling" %}</li>
+                            <li>{% trans "Try a different search term" %}</li>
+                            <li>{% trans "Use a different search type" %}</li>
+                        </ul>
+                    </p>
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Search Error Message -->
+            {% if search_error %}
+            <div class="alert alert-danger mt-4" role="alert">
+                <h4 class="alert-heading">{% trans "Search Error" %}</h4>
+                <p>{{ search_error }}</p>
+            </div>
+            {% endif %}
         {% elif error %}
             <div class="alert alert-warning" role="alert">
                 <h4 class="alert-heading">{% trans "Configuration Required" %}</h4>
@@ -59,6 +211,867 @@
                     </ol>
                 </p>
             </div>
+        {% elif is_commodity and quote %}
+        <!-- Commodity Information Display -->
+        <h1 class="mb-4">
+            {{ symbol }} - {{ quote.name|default:symbol }}
+            <span class="badge bg-warning text-dark ms-2">Commodity</span>
+        </h1>
+        
+        <!-- Commodity Information -->
+        <div class="row mb-4">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-line me-2"></i>{% trans "Commodity Information" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p><strong>{% trans "Symbol" %}:</strong> {{ symbol }}</p>
+                                <p><strong>{% trans "Name" %}:</strong> {{ quote.name|default:symbol }}</p>
+                                <p><strong>{% trans "Exchange" %}:</strong> {{ quote.exchange|default:"Commodity Exchange" }}</p>
+                            </div>
+                            <div class="col-md-6">
+                                <p><strong>{% trans "Currency" %}:</strong> USD</p>
+                                <p><strong>{% trans "Type" %}:</strong> {% trans "Commodity" %}</p>
+                                {% if quote.marketCap %}
+                                <p><strong>{% trans "Market Cap" %}:</strong> ${{ quote.marketCap|floatformat:0 }}</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-line me-2"></i>{% trans "Quick Actions" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-grid gap-2">
+                            <a href="{% url 'markets:compare' %}?symbols={{ symbol }}" class="btn btn-primary">
+                                <i class="fas fa-balance-scale me-2"></i>{% trans "Compare" %}
+                            </a>
+                            <a href="{% url 'portfolio:form' %}" class="btn btn-success">
+                                <i class="fas fa-plus me-2"></i>{% trans "Add to Portfolio" %}
+                            </a>
+                            {% if user.is_authenticated %}
+                                <button class="btn btn-outline-secondary" onclick="saveSymbol('{{ symbol }}')">
+                                    <i class="fas fa-bookmark me-2"></i>{% trans "Save" %}
+                                </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Performance Metrics -->
+        {% if metrics %}
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-bar me-2"></i>{% trans "Performance Metrics" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="text-primary">${{ quote.price|floatformat:2|default:"N/A" }}</h4>
+                                    <p class="text-muted">{% trans "Current Price" %}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="{% if quote.changePercentage and quote.changePercentage < 0 %}text-danger{% else %}text-success{% endif %}">
+                                        {% if quote.changePercentage %}
+                                            {{ quote.changePercentage }}%
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </h4>
+                                    <p class="text-muted">{% trans "Daily Change" %}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="text-info">${{ quote.dayHigh|floatformat:2|default:"N/A" }}</h4>
+                                    <p class="text-muted">{% trans "Day High" %}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="text-warning">${{ quote.dayLow|floatformat:2|default:"N/A" }}</h4>
+                                    <p class="text-muted">{% trans "Day Low" %}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Price Chart -->
+        {% if prices %}
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-area me-2"></i>{% trans "Price Chart" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div style="height: 400px;">
+                            <canvas id="commodityPriceChart"></canvas>
+                        </div>
+                        {% if prices|length == 0 %}
+                            <p class="text-muted text-center mt-3">{% trans "No price data available" %}</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    {% trans "Price data is not available for this commodity. This could be due to:" %}
+                    <ul class="mb-0 mt-2">
+                        <li>{% trans "Commodity symbol not found in the database" %}</li>
+                        <li>{% trans "No price data loaded for this commodity" %}</li>
+                        <li>{% trans "API key not configured" %}</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Price Table -->
+        {% if prices %}
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-table me-2"></i>{% trans "Recent Prices" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>{% trans "Date" %}</th>
+                                        <th>{% trans "Open" %}</th>
+                                        <th>{% trans "High" %}</th>
+                                        <th>{% trans "Low" %}</th>
+                                        <th>{% trans "Close" %}</th>
+                                        <th>{% trans "Volume" %}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for price in prices|slice:":20" %}
+                                    <tr>
+                                        <td>{{ price.date|date:"M j, Y" }}</td>
+                                        <td>${{ price.price|floatformat:2|default:"N/A" }}</td>
+                                        <td>${{ price.price|floatformat:2|default:"N/A" }}</td>
+                                        <td>${{ price.price|floatformat:2|default:"N/A" }}</td>
+                                        <td>${{ price.price|floatformat:2|default:"N/A" }}</td>
+                                        <td>{{ price.volume|floatformat:0|default:"N/A" }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Commodity Price Chart JavaScript -->
+        {% if is_commodity and prices %}
+        <script>
+        // Commodity Price Chart Data
+        const commodityPriceData = [
+        {% for price in prices|slice:":50" %}
+            {% if price.price %}
+            {{ price.price|floatformat:2 }}{% if not forloop.last %},{% endif %}
+            {% endif %}
+        {% endfor %}
+        ].reverse();
+        
+        const commodityLabels = [
+        {% for price in prices|slice:":50" %}
+            {% if price.price %}
+            '{{ price.date|date:"M j" }}'{% if not forloop.last %},{% endif %}
+            {% endif %}
+        {% endfor %}
+        ].reverse();
+
+        // Initialize commodity chart function
+        function initializeCommodityChart() {
+            const chartElement = document.getElementById('commodityPriceChart');
+            if (!chartElement) {
+                console.error('Commodity chart element not found');
+                return;
+            }
+            
+            console.log('Commodity chart data:', commodityPriceData);
+            console.log('Commodity chart labels:', commodityLabels);
+            console.log('Commodity chart data length:', commodityPriceData.length);
+            
+            if (commodityPriceData.length === 0) {
+                chartElement.innerHTML = '<p class="text-center text-muted">{% trans "No price data available" %}</p>';
+                return;
+            }
+
+            const ctx = chartElement.getContext('2d');
+            
+            // Ensure Chart.js is loaded and we have data
+            if (typeof Chart !== 'undefined' && commodityPriceData.length > 0) {
+                try {
+                    console.log('Creating commodity chart with data:', commodityPriceData);
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: commodityLabels,
+                            datasets: [{
+                                label: '{{ symbol }}',
+                                data: commodityPriceData,
+                                borderColor: '#ffc107',
+                                backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                                tension: 0.1,
+                                fill: true,
+                                pointRadius: 2,
+                                pointHoverRadius: 4
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            interaction: {
+                                intersect: false,
+                                mode: 'index'
+                            },
+                            scales: {
+                                x: {
+                                    type: 'category',
+                                    title: {
+                                        display: true,
+                                        text: '{% trans "Date" %}'
+                                    }
+                                },
+                                y: {
+                                    beginAtZero: false,
+                                    title: {
+                                        display: true,
+                                        text: '{% trans "Price" %} ($)'
+                                    },
+                                    ticks: {
+                                        callback: function(value) {
+                                            return '$' + value.toFixed(2);
+                                        }
+                                    }
+                                }
+                            },
+                            plugins: {
+                                legend: {
+                                    display: true
+                                },
+                                tooltip: {
+                                    mode: 'index',
+                                    intersect: false,
+                                    callbacks: {
+                                        label: function(context) {
+                                            return '{{ symbol }}: $' + context.parsed.y.toFixed(2);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                } catch (error) {
+                    chartElement.innerHTML = '<p class="text-center text-danger">{% trans "Chart creation failed" %}</p>';
+                }
+            } else {
+                if (typeof Chart === 'undefined') {
+                    chartElement.innerHTML = '<p class="text-center text-muted">{% trans "Chart library not loaded" %}</p>';
+                }
+            }
+        }
+
+        // Initialize chart when page is loaded
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeCommodityChart);
+        } else {
+            initializeCommodityChart();
+        }
+        </script>
+        {% endif %}
+        
+        {% elif is_cryptocurrency and cryptocurrency %}
+        <!-- Cryptocurrency Information Display -->
+        <h1 class="mb-4">
+            {{ symbol }} - {{ cryptocurrency.name }}
+            <span class="badge bg-warning text-dark ms-2">Cryptocurrency</span>
+        </h1>
+        
+        <!-- Cryptocurrency Information -->
+        <div class="row mb-4">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-coins me-2"></i>{% trans "Cryptocurrency Information" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p><strong>{% trans "Symbol" %}:</strong> {{ symbol }}</p>
+                                <p><strong>{% trans "Name" %}:</strong> {{ cryptocurrency.name }}</p>
+                                <p><strong>{% trans "Currency" %}:</strong> {{ cryptocurrency.currency }}</p>
+                            </div>
+                            <div class="col-md-6">
+                                <p><strong>{% trans "Type" %}:</strong> {% trans "Cryptocurrency" %}</p>
+                                {% if cryptocurrency.market_cap %}
+                                <p><strong>{% trans "Market Cap" %}:</strong> {{ cryptocurrency.market_cap_formatted }}</p>
+                                {% endif %}
+                                {% if cryptocurrency.circulating_supply %}
+                                <p><strong>{% trans "Circulating Supply" %}:</strong> {{ cryptocurrency.circulating_supply|floatformat:0 }}</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-line me-2"></i>{% trans "Quick Actions" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-grid gap-2">
+                            <a href="{% url 'markets:compare' %}?symbols={{ symbol }}" class="btn btn-primary">
+                                <i class="fas fa-balance-scale me-2"></i>{% trans "Compare" %}
+                            </a>
+                            <a href="{% url 'portfolio:form' %}" class="btn btn-success">
+                                <i class="fas fa-plus me-2"></i>{% trans "Add to Portfolio" %}
+                            </a>
+                            {% if user.is_authenticated %}
+                                <button class="btn btn-outline-secondary" onclick="saveSymbol('{{ symbol }}')">
+                                    <i class="fas fa-bookmark me-2"></i>{% trans "Save" %}
+                                </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Performance Metrics -->
+        {% if metrics %}
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-bar me-2"></i>{% trans "Performance Metrics" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="text-primary">
+                                        {% if quote.price %}
+                                            {{ cryptocurrency.get_currency_symbol }}{{ quote.price|floatformat:2 }}
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </h4>
+                                    <p class="text-muted">{% trans "Current Price" %}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="{% if quote.changePercentage and quote.changePercentage < 0 %}text-danger{% else %}text-success{% endif %}">
+                                        {% if quote.changePercentage %}
+                                            {{ quote.changePercentage }}%
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </h4>
+                                    <p class="text-muted">{% trans "Daily Change" %}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="text-info">
+                                        {% if quote.dayHigh %}
+                                            {{ cryptocurrency.get_currency_symbol }}{{ quote.dayHigh|floatformat:2 }}
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </h4>
+                                    <p class="text-muted">{% trans "Day High" %}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="text-warning">
+                                        {% if quote.dayLow %}
+                                            {{ cryptocurrency.get_currency_symbol }}{{ quote.dayLow|floatformat:2 }}
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </h4>
+                                    <p class="text-muted">{% trans "Day Low" %}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Price Chart -->
+        {% if prices %}
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-area me-2"></i>{% trans "Price Chart" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div style="height: 400px;">
+                            <canvas id="cryptocurrencyPriceChart"></canvas>
+                        </div>
+                        {% if prices|length == 0 %}
+                            <p class="text-muted text-center mt-3">{% trans "No price data available" %}</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    {% trans "Price data is not available for this cryptocurrency. This could be due to:" %}
+                    <ul class="mb-0 mt-2">
+                        <li>{% trans "Cryptocurrency symbol not found in the database" %}</li>
+                        <li>{% trans "No price data loaded for this cryptocurrency" %}</li>
+                        <li>{% trans "API key not configured" %}</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Price Table -->
+        {% if prices %}
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-table me-2"></i>{% trans "Recent Prices" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>{% trans "Date" %}</th>
+                                        <th>{% trans "Open" %}</th>
+                                        <th>{% trans "High" %}</th>
+                                        <th>{% trans "Low" %}</th>
+                                        <th>{% trans "Close" %}</th>
+                                        <th>{% trans "Volume" %}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for price in prices|slice:":20" %}
+                                    <tr>
+                                        <td>{{ price.timestamp|date:"M j, Y" }}</td>
+                                        <td>{{ price.open_price_formatted }}</td>
+                                        <td>{{ price.high_price_formatted }}</td>
+                                        <td>{{ price.low_price_formatted }}</td>
+                                        <td>{{ price.close_price_formatted }}</td>
+                                        <td>{{ price.volume|floatformat:0|default:"N/A" }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Cryptocurrency Price Chart JavaScript -->
+        {% if is_cryptocurrency and prices %}
+        <script>
+        // Cryptocurrency Price Chart Data
+        const cryptocurrencyPriceData = [
+        {% for price in prices|slice:":50" %}
+            {% if price.close_price %}
+            {
+                x: '{{ price.timestamp|date:"Y-m-d" }}',
+                y: {{ price.close_price|floatformat:2 }}
+            }{% if not forloop.last %},{% endif %}
+            {% endif %}
+        {% endfor %}
+        ].reverse();
+
+        // Currency symbol for chart formatting
+        const cryptoCurrencySymbol = '{{ cryptocurrency.get_currency_symbol }}';
+
+        // Initialize cryptocurrency chart function
+        function initializeCryptocurrencyChart() {
+            const chartElement = document.getElementById('cryptocurrencyPriceChart');
+            if (!chartElement) {
+                return; // Chart element doesn't exist on this page
+            }
+            
+            if (cryptocurrencyPriceData.length === 0) {
+                chartElement.innerHTML = '<p class="text-center text-muted">{% trans "No price data available" %}</p>';
+                return;
+            }
+
+            const ctx = chartElement.getContext('2d');
+            
+            // Ensure Chart.js is loaded and we have data
+            if (typeof Chart !== 'undefined' && cryptocurrencyPriceData.length > 0) {
+                try {
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            datasets: [{
+                                label: '{{ symbol }}',
+                                data: cryptocurrencyPriceData,
+                                borderColor: '#ffc107',
+                                backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                                tension: 0.1,
+                                fill: true,
+                                pointRadius: 2,
+                                pointHoverRadius: 4
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            interaction: {
+                                intersect: false,
+                                mode: 'index'
+                            },
+                            scales: {
+                                x: {
+                                    type: 'time',
+                                    time: {
+                                        unit: 'day',
+                                        displayFormats: {
+                                            day: 'MMM dd'
+                                        }
+                                    },
+                                    title: {
+                                        display: true,
+                                        text: '{% trans "Date" %}'
+                                    }
+                                },
+                                y: {
+                                    beginAtZero: false,
+                                    title: {
+                                        display: true,
+                                        text: '{% trans "Price" %} ({{ cryptocurrency.get_currency_symbol }})'
+                                    },
+                                    ticks: {
+                                        callback: function(value) {
+                                            return cryptoCurrencySymbol + value.toFixed(2);
+                                        }
+                                    }
+                                }
+                            },
+                            plugins: {
+                                legend: {
+                                    display: true
+                                },
+                                tooltip: {
+                                    mode: 'index',
+                                    intersect: false,
+                                    callbacks: {
+                                        label: function(context) {
+                                            return '{{ symbol }}: ' + cryptoCurrencySymbol + context.parsed.y.toFixed(2);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                } catch (error) {
+                    chartElement.innerHTML = '<p class="text-center text-danger">{% trans "Chart creation failed" %}</p>';
+                }
+            } else {
+                if (typeof Chart === 'undefined') {
+                    chartElement.innerHTML = '<p class="text-center text-muted">{% trans "Chart library not loaded" %}</p>';
+                }
+            }
+        }
+
+        // Initialize chart when page is loaded
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeCryptocurrencyChart);
+        } else {
+            initializeCryptocurrencyChart();
+        }
+        </script>
+        {% endif %}
+        
+        {% elif is_forex and quote %}
+        <!-- Forex Information Display -->
+        <h1 class="mb-4">
+            {{ symbol }} - {{ quote.name }}
+            <span class="badge bg-info text-white ms-2">Forex</span>
+        </h1>
+        
+        <!-- Forex Information -->
+        <div class="row mb-4">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-exchange-alt me-2"></i>{% trans "Forex Information" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p><strong>{% trans "Symbol" %}:</strong> {{ symbol }}</p>
+                                <p><strong>{% trans "Name" %}:</strong> {{ quote.name }}</p>
+                                <p><strong>{% trans "Exchange" %}:</strong> {{ quote.exchange }}</p>
+                            </div>
+                            <div class="col-md-6">
+                                <p><strong>{% trans "Type" %}:</strong> {% trans "Foreign Exchange" %}</p>
+                                <p><strong>{% trans "Currency" %}:</strong> {{ quote.currency }}</p>
+                                {% if quote.volume %}
+                                <p><strong>{% trans "Volume" %}:</strong> {{ quote.volume|floatformat:0 }}</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Forex Quote Card -->
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-line me-2"></i>{% trans "Current Quote" %}
+                        </h5>
+                    </div>
+                    <div class="card-body text-center">
+                        {% if quote.price %}
+                        <h3 class="mb-2">
+                            {{ quote.price|floatformat:6 }}
+                        </h3>
+                        {% if quote.changePercentage %}
+                        <p class="mb-1">
+                            <span class="badge {% if quote.changePercentage >= 0 %}bg-success{% else %}bg-danger{% endif %}">
+                                {% if quote.changePercentage >= 0 %}+{% endif %}{{ quote.changePercentage|floatformat:2 }}%
+                            </span>
+                        </p>
+                        {% endif %}
+                        {% if quote.change %}
+                        <p class="mb-1">
+                            <small class="text-muted">
+                                {% if quote.change >= 0 %}+{% endif %}{{ quote.change|floatformat:6 }}
+                            </small>
+                        </p>
+                        {% endif %}
+                        {% if quote.dayHigh and quote.dayLow %}
+                        <div class="mt-3">
+                            <small class="text-muted d-block">{% trans "Day Range" %}</small>
+                            <small class="text-success">{{ quote.dayHigh|floatformat:6 }}</small>
+                            <span class="text-muted mx-1">-</span>
+                            <small class="text-danger">{{ quote.dayLow|floatformat:6 }}</small>
+                        </div>
+                        {% endif %}
+                        {% else %}
+                        <p class="text-muted">{% trans "Quote data not available" %}</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Forex Price Chart -->
+        {% if prices %}
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-area me-2"></i>{% trans "Price Chart" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="forexPriceChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>{% trans "No Price Data Available" %}</strong>
+                    <p class="mb-0 mt-2">{% trans "Price data is not available for this forex pair. This could be due to:" %}</p>
+                    <ul class="mb-0 mt-2">
+                        <li>{% trans "Forex pair not found in the database" %}</li>
+                        <li>{% trans "No price data loaded for this forex pair" %}</li>
+                        <li>{% trans "API key not configured" %}</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Forex Price Chart JavaScript -->
+        {% if is_forex and prices %}
+        <script>
+        // Forex Price Chart Data
+        const forexPriceData = [
+        {% for price in prices|slice:":50" %}
+            {% if price.price %}
+            {
+                x: '{{ price.date }}',
+                y: {{ price.price|floatformat:6 }}
+            }{% if not forloop.last %},{% endif %}
+            {% endif %}
+        {% endfor %}
+        ].reverse();
+
+        // Initialize forex chart function
+        function initializeForexChart() {
+            const chartElement = document.getElementById('forexPriceChart');
+            if (!chartElement) {
+                return; // Chart element doesn't exist on this page
+            }
+            
+            if (forexPriceData.length === 0) {
+                chartElement.innerHTML = '<p class="text-center text-muted">{% trans "No price data available" %}</p>';
+                return;
+            }
+
+            const ctx = chartElement.getContext('2d');
+            
+            // Ensure Chart.js is loaded and we have data
+            if (typeof Chart !== 'undefined' && forexPriceData.length > 0) {
+                try {
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            datasets: [{
+                                label: '{{ symbol }}',
+                                data: forexPriceData,
+                                borderColor: '#17a2b8',
+                                backgroundColor: 'rgba(23, 162, 184, 0.1)',
+                                tension: 0.1,
+                                fill: true,
+                                pointRadius: 2,
+                                pointHoverRadius: 4
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                x: {
+                                    type: 'time',
+                                    time: {
+                                        parser: 'yyyy-MM-dd',
+                                        displayFormats: {
+                                            day: 'MMM dd'
+                                        }
+                                    },
+                                    title: {
+                                        display: true,
+                                        text: '{% trans "Date" %}'
+                                    }
+                                },
+                                y: {
+                                    beginAtZero: false,
+                                    title: {
+                                        display: true,
+                                        text: '{% trans "Price" %}'
+                                    },
+                                    ticks: {
+                                        callback: function(value) {
+                                            return value.toFixed(6);
+                                        }
+                                    }
+                                }
+                            },
+                            plugins: {
+                                legend: {
+                                    display: true
+                                },
+                                tooltip: {
+                                    mode: 'index',
+                                    intersect: false,
+                                    callbacks: {
+                                        label: function(context) {
+                                            return '{{ symbol }}: ' + context.parsed.y.toFixed(6);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                } catch (error) {
+                    chartElement.innerHTML = '<p class="text-center text-danger">{% trans "Chart creation failed" %}</p>';
+                }
+            } else {
+                if (typeof Chart === 'undefined') {
+                    chartElement.innerHTML = '<p class="text-center text-muted">{% trans "Chart library not loaded" %}</p>';
+                }
+            }
+        }
+
+        // Initialize chart when page is loaded
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeForexChart);
+        } else {
+            initializeForexChart();
+        }
+        </script>
+        {% endif %}
+        
         {% else %}
         <h1 class="mb-4">
             {{ symbol }} - {{ instrument.name }}
@@ -138,13 +1151,13 @@
                         <div class="row">
                             <div class="col-md-3">
                                 <div class="text-center">
-                                    <h4 class="text-primary">{{ metrics.cagr|floatformat:2 }}%</h4>
+                                    <h4 class="text-primary">{{ metrics.cagr|mul:100|floatformat:2 }}%</h4>
                                     <p class="text-muted">{% trans "CAGR (5Y)" %}</p>
                                 </div>
                             </div>
                             <div class="col-md-3">
                                 <div class="text-center">
-                                    <h4 class="text-info">{{ metrics.volatility|floatformat:2 }}%</h4>
+                                    <h4 class="text-info">{{ metrics.volatility|mul:100|floatformat:2 }}%</h4>
                                     <p class="text-muted">{% trans "Volatility" %}</p>
                                 </div>
                             </div>
@@ -156,7 +1169,7 @@
                             </div>
                             <div class="col-md-3">
                                 <div class="text-center">
-                                    <h4 class="text-warning">{{ metrics.max_drawdown|floatformat:2 }}%</h4>
+                                    <h4 class="text-warning">{{ metrics.max_drawdown|mul:100|floatformat:2 }}%</h4>
                                     <p class="text-muted">{% trans "Max Drawdown" %}</p>
                                 </div>
                             </div>
@@ -307,6 +1320,67 @@
 {% endblock %}
 
 {% block extra_js %}
+{% if show_search_form %}
+<script>
+// Dynamic search form behavior
+document.addEventListener('DOMContentLoaded', function() {
+    const searchTypeSelect = document.querySelector('select[name="search_type"]');
+    const searchInput = document.getElementById('search-input');
+    const symbolExample = document.querySelector('.symbol-example');
+    const companyExample = document.querySelector('.company-example');
+    const isinExample = document.querySelector('.isin-example');
+    const etfExample = document.querySelector('.etf-example');
+    const commodityExample = document.querySelector('.commodity-example');
+    const cryptocurrencyExample = document.querySelector('.cryptocurrency-example');
+    const forexExample = document.querySelector('.forex-example');
+    
+    function updateSearchForm() {
+        const searchType = searchTypeSelect.value;
+        
+        // Update placeholder
+        switch(searchType) {
+            case 'symbol':
+                searchInput.placeholder = '{% trans "Enter stock symbol (e.g., AAPL, MSFT, GOOGL, TSLA)" %}';
+                break;
+            case 'company':
+                searchInput.placeholder = '{% trans "Enter company name (e.g., Gazprom, Apple Inc, Microsoft)" %}';
+                break;
+            case 'isin':
+                searchInput.placeholder = '{% trans "Enter ISIN (e.g., US0378331005 for Apple)" %}';
+                break;
+            case 'etf':
+                searchInput.placeholder = '{% trans "Enter ETF symbol or name (e.g., SPY, VTI, QQQ, ARKK)" %}';
+                break;
+            case 'commodity':
+                searchInput.placeholder = '{% trans "Enter commodity symbol (e.g., GCUSD, SILUSD, CLUSD)" %}';
+                break;
+            case 'cryptocurrency':
+                searchInput.placeholder = '{% trans "Enter cryptocurrency symbol (e.g., BTCUSD, ETHUSD, ADAUSD)" %}';
+                break;
+            case 'forex':
+                searchInput.placeholder = '{% trans "Enter forex pair symbol (e.g., EURUSD, GBPUSD, USDJPY)" %}';
+                break;
+        }
+        
+        // Update examples visibility
+        symbolExample.style.display = searchType === 'symbol' ? 'inline' : 'none';
+        companyExample.style.display = searchType === 'company' ? 'inline' : 'none';
+        isinExample.style.display = searchType === 'isin' ? 'inline' : 'none';
+        etfExample.style.display = searchType === 'etf' ? 'inline' : 'none';
+        commodityExample.style.display = searchType === 'commodity' ? 'inline' : 'none';
+        cryptocurrencyExample.style.display = searchType === 'cryptocurrency' ? 'inline' : 'none';
+        forexExample.style.display = searchType === 'forex' ? 'inline' : 'none';
+    }
+    
+    // Initial setup
+    updateSearchForm();
+    
+    // Update on change
+    searchTypeSelect.addEventListener('change', updateSearchForm);
+});
+</script>
+{% endif %}
+
 {% if prices %}
 <script>
 // Price Chart Data
@@ -324,12 +1398,17 @@ const currencySymbol = '{{ instrument.currency_symbol }}';
 
 // Initialize chart function
 function initializeChart() {
+    const chartElement = document.getElementById('priceChart');
+    if (!chartElement) {
+        return; // Chart element doesn't exist on this page
+    }
+    
     if (priceData.length === 0) {
-        document.getElementById('priceChart').innerHTML = '<p class="text-center text-muted">{% trans "No price data available" %}</p>';
+        chartElement.innerHTML = '<p class="text-center text-muted">{% trans "No price data available" %}</p>';
         return;
     }
 
-    const ctx = document.getElementById('priceChart').getContext('2d');
+    const ctx = chartElement.getContext('2d');
     
     // Ensure Chart.js is loaded and we have data
     if (typeof Chart !== 'undefined' && priceData.length > 0) {
@@ -394,11 +1473,11 @@ function initializeChart() {
                 }
             });
         } catch (error) {
-            document.getElementById('priceChart').innerHTML = '<p class="text-center text-danger">{% trans "Chart creation failed" %}</p>';
+            chartElement.innerHTML = '<p class="text-center text-danger">{% trans "Chart creation failed" %}</p>';
         }
     } else {
         if (typeof Chart === 'undefined') {
-            document.getElementById('priceChart').innerHTML = '<p class="text-center text-muted">{% trans "Chart library not loaded" %}</p>';
+            chartElement.innerHTML = '<p class="text-center text-muted">{% trans "Chart library not loaded" %}</p>';
         }
     }
 }
@@ -420,6 +1499,50 @@ function saveSymbol(symbol) {
 }
 </script>
 {% endif %}
-    </div>
-</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.metric-card {
+    background: #f8f9fa;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    margin-bottom: 1rem;
+    border-left: 4px solid #007bff;
+}
+
+.metric-label {
+    font-size: 0.875rem;
+    color: #6c757d;
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+}
+
+.metric-value {
+    font-weight: 600;
+    margin: 0;
+}
+
+.commodity-info .badge {
+    font-size: 0.875rem;
+}
+
+.commodity-quote-info .metric-card {
+    transition: box-shadow 0.2s ease-in-out;
+}
+
+.commodity-quote-info .metric-card:hover {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+@media (max-width: 768px) {
+    .commodity-quote-info .col-md-4 {
+        margin-top: 1rem;
+    }
+    
+    .commodity-quote-info .metric-card {
+        margin-bottom: 0.5rem;
+    }
+}
+</style>
 {% endblock %}

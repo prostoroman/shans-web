@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "shans-web"
 version = "0.1.0"
 description = "Production-ready Django 5.x app with SSR, DRF API, FMP Premium integration"
-authors = [{name = "Shan", email = "shan@example.com"}]
+authors = [{name = "Shan", email = "shan@shans.ai"}]
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

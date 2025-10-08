@@ -80,6 +80,89 @@
     </div>
 </div>
 
+<!-- Actively Trading List Section -->
+<div class="row mt-5">
+    <div class="col-12">
+        <h3 class="mb-4">{% trans "Actively Trading" %}</h3>
+        <div class="card">
+            <div class="card-body">
+                {% if actively_trading %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>{% trans "Symbol" %}</th>
+                                    <th>{% trans "Name" %}</th>
+                                    <th>{% trans "Price" %}</th>
+                                    <th>{% trans "Change" %}</th>
+                                    <th>{% trans "Volume" %}</th>
+                                    <th>{% trans "Market Cap" %}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in actively_trading %}
+                                <tr>
+                                    <td>
+                                        <a href="{% url 'markets:info_symbol' item.symbol %}" class="text-decoration-none fw-bold">
+                                            {{ item.symbol }}
+                                        </a>
+                                    </td>
+                                    <td>{{ item.name|default:"-" }}</td>
+                                    <td>
+                                        {% if item.price %}
+                                            ${{ item.price|floatformat:2 }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if item.change %}
+                                            <span class="{% if item.change >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                                {% if item.change >= 0 %}+{% endif %}{{ item.change|floatformat:2 }}%
+                                            </span>
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if item.volume %}
+                                            {{ item.volume|floatformat:0 }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if item.marketCap %}
+                                            ${{ item.marketCap|floatformat:0 }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="text-center mt-3">
+                        <small class="text-muted">
+                            {% trans "Data provided by Financial Modeling Prep" %}
+                        </small>
+                    </div>
+                {% else %}
+                    <div class="text-center py-4">
+                        <p class="text-muted mb-0">
+                            {% trans "Unable to load actively trading data at this time." %}
+                        </p>
+                        <small class="text-muted">
+                            {% trans "Please try again later or check your API configuration." %}
+                        </small>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
 {% if user.is_authenticated %}
 <div class="row mt-5">
     <div class="col-12">

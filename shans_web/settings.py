@@ -162,8 +162,8 @@ REST_FRAMEWORK = {
         "rest_framework.renderers.JSONRenderer",
     ],
     "DEFAULT_THROTTLE_RATES": {
-        "basic": "60/day",
-        "pro": "300/day",
+        "basic": "1000/hour" if DEBUG else "60/day",
+        "pro": "2000/hour" if DEBUG else "300/day",
     },
 }
 

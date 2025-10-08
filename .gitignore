@@ -133,6 +133,13 @@ media/
 staticfiles/
 static/
 
+# Django cache
+*.cache
+.cache/
+cache/
+.django_cache/
+*.djcache
+
 # IDE
 .vscode/
 .idea/
@@ -152,3 +159,4 @@ Thumbs.db
 # Local development
 *.sqlite3
 *.db
+*.djcache

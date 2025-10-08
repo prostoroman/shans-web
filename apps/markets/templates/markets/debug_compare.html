@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% load markets_extras %}
+
+{% block title %}{% trans "Debug Comparison" %} - shans.ai{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">{% trans "Debug Comparison" %}</h1>
+        
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Debug Information</h5>
+            </div>
+            <div class="card-body">
+                <h6>Comparison Result:</h6>
+                <pre>{{ comparison_result|pprint }}</pre>
+                
+                <h6>Metrics Check:</h6>
+                <p>comparison_result.metrics exists: {{ comparison_result.metrics|yesno:"Yes,No" }}</p>
+                <p>comparison_result.metrics type: {{ comparison_result.metrics|default:"None" }}</p>
+                
+                {% if comparison_result.metrics %}
+                    <h6>Metrics Content:</h6>
+                    <pre>{{ comparison_result.metrics|pprint }}</pre>
+                    
+                    <h6>Symbols:</h6>
+                    <p>{{ symbols }}</p>
+                    
+                    {% for symbol in symbols %}
+                        <h6>{{ symbol }} Metrics:</h6>
+                        {% with asset_metrics=comparison_result.metrics|lookup:symbol %}
+                            <p>Found metrics: {{ asset_metrics|yesno:"Yes,No" }}</p>
+                            {% if asset_metrics %}
+                                <pre>{{ asset_metrics|pprint }}</pre>
+                            {% endif %}
+                        {% endwith %}
+                    {% endfor %}
+                {% else %}
+                    <p class="text-danger">No metrics found!</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
