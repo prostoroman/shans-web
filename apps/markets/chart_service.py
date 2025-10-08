@@ -10,9 +10,11 @@ from datetime import date, timedelta, datetime
 from enum import Enum
 import math
 import hashlib
+import concurrent.futures
+import threading
 
 from .assets import AssetFactory, BaseAsset, AssetType
-from .currency_converter import get_currency_converter, normalize_prices_to_currency
+from .smart_currency_converter import get_smart_currency_converter, refresh_smart_currency_converter, normalize_prices_to_currency_smart
 from .risk_free_rate_service import get_risk_free_rate_service
 
 logger = logging.getLogger(__name__)
@@ -71,9 +73,10 @@ class ChartService:
     """Enhanced charting service with server-driven aggregation and normalization."""
     
     def __init__(self):
-        self.currency_converter = get_currency_converter()
+        self.currency_converter = refresh_smart_currency_converter()
         self.risk_free_rate_service = get_risk_free_rate_service()
         self._cache = self._get_cache()
+        self._non_trading_symbols = set()  # Cache for symbols known to be non-actively trading
     
     def _get_cache(self):
         """Get Django cache instance."""
@@ -83,6 +86,39 @@ class ChartService:
         except Exception:
             # Fallback to simple dict cache for testing
             return {}
+    
+    def _is_symbol_actively_trading(self, asset: BaseAsset) -> bool:
+        """Check if a symbol is actively trading to avoid unnecessary API calls."""
+        symbol = asset.symbol
+        
+        # Check cache first
+        if symbol in self._non_trading_symbols:
+            return False
+        
+        try:
+            quote = asset.get_quote()
+            # Only skip if we have a quote and it explicitly says not actively trading
+            # AND we don't have any price data available
+            if quote and quote.get('isActivelyTrading') is False:
+                # Check if we have any price data available despite being marked as not actively trading
+                try:
+                    # Try to get recent price data to see if it's actually available
+                    recent_data = asset.get_price_history(days=7, include_dividends=False)
+                    if recent_data and len(recent_data) > 0:
+                        # We have price data, so treat as actively trading
+                        logger.info(f"Symbol {symbol} marked as not actively trading but has price data - proceeding")
+                        return True
+                    else:
+                        # No price data available, skip this symbol
+                        self._non_trading_symbols.add(symbol)
+                        return False
+                except Exception:
+                    # If we can't check price data, assume it might be trading
+                    return True
+            return True
+        except Exception:
+            # If we can't determine, assume it might be trading
+            return True
     
     def _get_cache_key(self, prefix: str, *args) -> str:
         """Generate cache key from arguments."""
@@ -120,19 +156,11 @@ class ChartService:
             Dictionary with comparison results including aggregated chart data
         """
         try:
-            # Check cache first
+            logger.info(f"compare_assets called with symbols: {symbols}, normalize_mode: {normalize_mode} (type: {type(normalize_mode)})")
+            # Check cache first with optimized strategy
             symbols_key = sorted(symbols)  # Sort for consistent cache key
-            cache_key = self._get_cache_key(
-                'compare', 
-                ','.join(symbols_key), 
-                base_currency, 
-                include_dividends, 
-                period, 
-                normalize_mode,
-                'v5'  # Version to bust cache after fixing data sorting
-            )
-            
-            cached_result = self._get_cached_data(cache_key)
+            # Temporarily disable caching to debug
+            cached_result = None  # self._get_cached_data_optimized(symbols_key, base_currency, include_dividends, period, normalize_mode)
             if cached_result:
                 logger.info(f"Cache hit for comparison: {symbols_key}")
                 return cached_result
@@ -140,6 +168,8 @@ class ChartService:
             # Parse parameters
             period_preset = PeriodPreset(period)
             normalize_mode_enum = NormalizeMode(normalize_mode)
+            
+            logger.info(f"Parsed parameters - period_preset: {type(period_preset)}, normalize_mode_enum: {type(normalize_mode_enum)}")
             
             # Create asset instances
             assets = AssetFactory.create_assets(symbols)
@@ -154,27 +184,12 @@ class ChartService:
             
             # Determine granularity based on period
             granularity = self._determine_granularity(period_preset)
+            logger.info(f"Determined granularity: {type(granularity)}, value: {getattr(granularity, 'value', 'NO_VALUE_ATTR')}")
             
-            # Get raw price data for all assets
-            asset_data = {}
-            failed_symbols = []
-            
-            for symbol, asset in zip(symbols, assets):
-                try:
-                    logger.info(f"Getting data for {symbol} (type: {asset.asset_type.value})")
-                    raw_data = self._get_raw_price_data(asset, start_date, end_date, include_dividends)
-                    if raw_data:
-                        asset_data[symbol] = {
-                            'asset': asset,
-                            'raw_data': raw_data
-                        }
-                        logger.info(f"Successfully got {len(raw_data)} data points for {symbol}")
-                    else:
-                        failed_symbols.append(symbol)
-                        logger.warning(f"No data for {symbol}")
-                except Exception as e:
-                    logger.error(f"Error getting data for {symbol}: {e}", exc_info=True)
-                    failed_symbols.append(symbol)
+            # Get raw price data for all assets in parallel
+            asset_data, failed_symbols = self._get_raw_price_data_parallel(
+                assets, start_date, end_date, include_dividends
+            )
             
             if not asset_data:
                 return {
@@ -182,17 +197,8 @@ class ChartService:
                     'failed_symbols': failed_symbols
                 }
             
-            # Normalize prices to base currency
-            normalized_data = self._normalize_asset_data(asset_data, base_currency)
-            
-            # Aggregate data based on granularity
-            aggregated_data = self._aggregate_data(normalized_data, granularity)
-            
-            # Reduce data points to target ~180 points
-            reduced_data = self._reduce_data_points(aggregated_data, target_points=180)
-            
-            # Normalize for comparison
-            chart_data = self._normalize_for_comparison(reduced_data, normalize_mode_enum)
+            # Process data in streamlined pipeline: normalize + aggregate + reduce + normalize for comparison
+            chart_data = self._process_data_streamlined(asset_data, base_currency, granularity, normalize_mode_enum)
             
             # Calculate metrics
             metrics = self._calculate_metrics(chart_data, period_preset, asset_data)
@@ -216,14 +222,459 @@ class ChartService:
             
             logger.info(f"Comparison result prepared with {len(metrics)} metrics and {len(result['assets'])} assets")
             
-            # Cache the result for 15 minutes
-            self._set_cached_data(cache_key, result, ttl=900)
+            # Cache the result with optimized strategy
+            self._set_cached_data_optimized(result, symbols_key, base_currency, include_dividends, period, normalize_mode)
             
             return result
             
         except Exception as e:
             logger.error(f"Error in chart service: {e}")
             return {'error': str(e)}
+    
+    def _get_raw_price_data_parallel(self, assets: List[BaseAsset], start_date: date, 
+                                   end_date: date, include_dividends: bool) -> Tuple[Dict[str, Any], List[str]]:
+        """
+        Load price data for multiple assets in parallel.
+        
+        Args:
+            assets: List of asset instances
+            start_date: Start date for data
+            end_date: End date for data
+            include_dividends: Whether to include dividends
+            
+        Returns:
+            Tuple of (asset_data_dict, failed_symbols_list)
+        """
+        asset_data = {}
+        failed_symbols = []
+        
+        def load_asset_data(asset):
+            """Load data for a single asset."""
+            try:
+                # Check if symbol is actively trading before attempting data fetch
+                if not self._is_symbol_actively_trading(asset):
+                    logger.info(f"Symbol {asset.symbol} is not actively trading - skipping data fetch")
+                    return asset.symbol, None
+                
+                logger.info(f"Getting data for {asset.symbol} (type: {asset.asset_type.value})")
+                raw_data = self._get_raw_price_data(asset, start_date, end_date, include_dividends)
+                if raw_data:
+                    logger.info(f"Successfully got {len(raw_data)} data points for {asset.symbol}")
+                    return asset.symbol, {
+                        'asset': asset,
+                        'raw_data': raw_data
+                    }
+                else:
+                    logger.warning(f"No data available for {asset.symbol}")
+                    return asset.symbol, None
+            except Exception as e:
+                logger.error(f"Error getting data for {asset.symbol}: {e}", exc_info=True)
+                return asset.symbol, None
+        
+        # Use ThreadPoolExecutor for parallel loading
+        max_workers = min(len(assets), 3)  # Limit to 3 concurrent requests to avoid overwhelming the API
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_asset = {executor.submit(load_asset_data, asset): asset for asset in assets}
+            
+            # Collect results as they complete
+            for future in concurrent.futures.as_completed(future_to_asset):
+                try:
+                    symbol, data = future.result()
+                    if data:
+                        asset_data[symbol] = data
+                    else:
+                        failed_symbols.append(symbol)
+                except Exception as e:
+                    asset = future_to_asset[future]
+                    logger.error(f"Error loading asset data for {asset.symbol}: {e}")
+                    failed_symbols.append(asset.symbol)
+        
+        logger.info(f"Parallel loading completed: {len(asset_data)} successful, {len(failed_symbols)} failed")
+        return asset_data, failed_symbols
+    
+    def _get_cached_data_optimized(self, symbols: List[str], base_currency: str, 
+                                 include_dividends: bool, period: str, normalize_mode: str) -> Optional[Dict[str, Any]]:
+        """
+        Get cached data with optimized cache key strategy.
+        
+        Args:
+            symbols: List of symbols
+            base_currency: Base currency
+            include_dividends: Whether dividends are included
+            period: Time period
+            normalize_mode: Normalization mode
+            
+        Returns:
+            Cached data or None
+        """
+        try:
+            # Try multiple cache keys for better hit rates
+            cache_keys = self._generate_cache_keys(symbols, base_currency, include_dividends, period, normalize_mode)
+            
+            for cache_key in cache_keys:
+                cached_data = self._get_cached_data(cache_key)
+                if cached_data:
+                    logger.info(f"Cache hit with key: {cache_key}")
+                    return cached_data
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error in optimized cache lookup: {e}")
+            return None
+    
+    def _generate_cache_keys(self, symbols: List[str], base_currency: str, 
+                           include_dividends: bool, period: str, normalize_mode: str) -> List[str]:
+        """
+        Generate multiple cache keys for better hit rates.
+        
+        Args:
+            symbols: List of symbols
+            base_currency: Base currency
+            include_dividends: Whether dividends are included
+            period: Time period
+            normalize_mode: Normalization mode
+            
+        Returns:
+            List of cache keys to try
+        """
+        cache_keys = []
+        symbols_key = '_'.join(sorted(symbols))
+        
+        # Primary cache key (exact match)
+        primary_key = self._get_cache_key(
+            'compare_v6', 
+            symbols_key, 
+            base_currency, 
+            include_dividends, 
+            period, 
+            normalize_mode
+        )
+        cache_keys.append(primary_key)
+        
+        # Broader cache keys for partial matches
+        if len(symbols) >= 2:
+            # Try with broader period matches
+            if period in ['1Y', '3Y', '5Y']:
+                broader_period = 'Y'  # Group all year-based periods
+                broader_key = self._get_cache_key(
+                    'compare_v6', 
+                    symbols_key, 
+                    base_currency, 
+                    include_dividends, 
+                    broader_period, 
+                    normalize_mode
+                )
+                cache_keys.append(broader_key)
+        
+        # Try individual asset cache keys
+        for symbol in symbols:
+            individual_key = self._get_cache_key(
+                'compare_v6', 
+                symbol, 
+                base_currency, 
+                include_dividends, 
+                period, 
+                normalize_mode
+            )
+            cache_keys.append(individual_key)
+        
+        return cache_keys
+    
+    def _set_cached_data_optimized(self, data: Dict[str, Any], symbols: List[str], 
+                                  base_currency: str, include_dividends: bool, 
+                                  period: str, normalize_mode: str, ttl: int = 900) -> None:
+        """
+        Set cached data with optimized cache key strategy.
+        
+        Args:
+            data: Data to cache
+            symbols: List of symbols
+            base_currency: Base currency
+            include_dividends: Whether dividends are included
+            period: Time period
+            normalize_mode: Normalization mode
+            ttl: Time to live in seconds
+        """
+        try:
+            # Generate cache keys
+            cache_keys = self._generate_cache_keys(symbols, base_currency, include_dividends, period, normalize_mode)
+            
+            # Cache with multiple keys for better hit rates
+            for cache_key in cache_keys:
+                self._set_cached_data(cache_key, data, ttl)
+            
+            logger.info(f"Cached data with {len(cache_keys)} keys")
+            
+        except Exception as e:
+            logger.error(f"Error in optimized cache setting: {e}")
+    
+    def _process_data_streamlined(self, asset_data: Dict[str, Any], base_currency: str, 
+                                granularity: Granularity, normalize_mode: NormalizeMode) -> Dict[str, Any]:
+        """
+        Streamlined data processing pipeline that combines normalization, aggregation, 
+        reduction, and comparison normalization in optimized passes.
+        
+        Args:
+            asset_data: Raw asset data
+            base_currency: Base currency for normalization
+            granularity: Data granularity
+            normalize_mode: Normalization mode for comparison
+            
+        Returns:
+            Processed chart data ready for comparison
+        """
+        try:
+            processed_data = {}
+            
+            # Pre-calculate currency conversion rates for batch processing
+            currency_rates_cache = {}
+            
+            for symbol, data in asset_data.items():
+                asset = data['asset']
+                raw_data = data['raw_data']
+                
+                if not raw_data:
+                    continue
+                
+                # Get currency conversion rates in batch if needed
+                if asset.currency and asset.currency != base_currency:
+                    dates = [price.get('date') for price in raw_data if price.get('date')]
+                    if dates:
+                        cache_key = f"{asset.currency}:{base_currency}:{min(dates)}:{max(dates)}"
+                        if cache_key not in currency_rates_cache:
+                            currency_rates_cache[cache_key] = self.currency_converter.get_historical_rates_batch(
+                                asset.currency, base_currency, min(dates), max(dates)
+                            )
+                
+                # Process data in single pass: normalize + aggregate + reduce
+                processed_prices = []
+                current_period_data = []
+                
+                for price in raw_data:
+                    # Normalize currency
+                    normalized_price = self._normalize_price_currency_optimized(
+                        price, asset, base_currency, currency_rates_cache
+                    )
+                    if not normalized_price:
+                        continue
+                    
+                    # Add to current period
+                    current_period_data.append(normalized_price)
+                    
+                    # Check if we should aggregate this period
+                    if self._should_aggregate_period(current_period_data, granularity):
+                        aggregated = self._aggregate_period_data(current_period_data)
+                        processed_prices.append(aggregated)
+                        current_period_data = []
+                
+                # Add remaining data
+                if current_period_data:
+                    aggregated = self._aggregate_period_data(current_period_data)
+                    processed_prices.append(aggregated)
+                
+                # Reduce data points to target ~180 points
+                if len(processed_prices) > 180:
+                    processed_prices = self._reduce_data_points_single(processed_prices, target_points=180)
+                
+                processed_data[symbol] = processed_prices
+            
+            # Normalize for comparison in final pass
+            chart_data = self._normalize_for_comparison_streamlined(processed_data, normalize_mode)
+            
+            logger.info(f"Streamlined processing completed for {len(processed_data)} assets")
+            return chart_data
+            
+        except Exception as e:
+            logger.error(f"Error in streamlined data processing: {e}")
+            return {}
+    
+    def _normalize_price_currency_optimized(self, price: Dict[str, Any], asset: BaseAsset, 
+                                          base_currency: str, currency_rates_cache: Dict[str, Dict[str, Decimal]]) -> Optional[Dict[str, Any]]:
+        """Optimized currency normalization using pre-cached rates."""
+        try:
+            # Ensure price is a dictionary
+            if not isinstance(price, dict):
+                return None
+            
+            # Get the price value (prefer adjusted close if available)
+            price_value = price.get('adjClose') or price.get('close') or price.get('price')
+            if price_value is None:
+                return None
+            
+            # Ensure price_value is a valid number
+            try:
+                price_value = float(price_value)
+                if price_value <= 0:
+                    return None
+            except (ValueError, TypeError):
+                return None
+            
+            # Convert to base currency if needed using cached rates
+            if asset.currency and asset.currency != base_currency:
+                date_str = price.get('date')
+                if date_str:
+                    cache_key = f"{asset.currency}:{base_currency}:{date_str}"
+                    # Find the cache entry that contains this date
+                    forex_rate = None
+                    for key, rates in currency_rates_cache.items():
+                        if date_str in rates:
+                            forex_rate = rates[date_str]
+                            break
+                    
+                    if forex_rate is None:
+                        logger.warning(f"No forex rate available for {asset.currency} to {base_currency} on {date_str}")
+                        return None
+                    
+                    price_value = float(Decimal(str(price_value)) * forex_rate)
+            
+            # Create normalized price data
+            normalized_price = price.copy()
+            
+            # Update price fields
+            if 'adjClose' in price:
+                normalized_price['adjClose'] = price_value
+            elif 'close' in price:
+                normalized_price['close'] = price_value
+            elif 'price' in price:
+                normalized_price['price'] = price_value
+            else:
+                normalized_price['close'] = price_value
+            
+            # Add currency conversion metadata
+            if asset.currency != base_currency:
+                normalized_price['original_currency'] = asset.currency
+                normalized_price['converted_currency'] = base_currency
+            
+            return normalized_price
+            
+        except Exception as e:
+            logger.warning(f"Error normalizing price currency: {e}")
+            return None
+    
+    def _should_aggregate_period(self, period_data: List[Dict[str, Any]], granularity: Granularity) -> bool:
+        """Check if current period data should be aggregated."""
+        if not period_data:
+            return False
+        
+        if granularity == Granularity.DAILY:
+            return len(period_data) >= 1
+        elif granularity == Granularity.WEEKLY:
+            return len(period_data) >= 5  # ~1 week of daily data
+        elif granularity == Granularity.MONTHLY:
+            return len(period_data) >= 20  # ~1 month of daily data
+        elif granularity == Granularity.QUARTERLY:
+            return len(period_data) >= 60  # ~1 quarter of daily data
+        
+        return False
+    
+    def _aggregate_period_data(self, period_data: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Aggregate data for a single period."""
+        if not period_data:
+            return {}
+        
+        # Use the last date in the period
+        last_price = period_data[-1]
+        
+        # Calculate aggregated values
+        prices = []
+        volumes = []
+        
+        for price_data in period_data:
+            price_value = price_data.get('adjClose') or price_data.get('close') or price_data.get('price')
+            if price_value:
+                prices.append(float(price_value))
+            
+            volume = price_data.get('volume', 0)
+            if volume:
+                volumes.append(float(volume))
+        
+        if not prices:
+            return last_price
+        
+        # Create aggregated data point
+        aggregated = last_price.copy()
+        aggregated['close'] = prices[-1]  # Use last price as close
+        aggregated['open'] = prices[0] if len(prices) > 1 else prices[0]  # Use first price as open
+        aggregated['high'] = max(prices)  # Highest price
+        aggregated['low'] = min(prices)   # Lowest price
+        aggregated['volume'] = sum(volumes) if volumes else 0
+        
+        return aggregated
+    
+    def _reduce_data_points_single(self, data_points: List[Dict[str, Any]], target_points: int = 180) -> List[Dict[str, Any]]:
+        """Reduce data points to target number using sampling."""
+        if len(data_points) <= target_points:
+            return data_points
+        
+        # Use simple sampling to reduce points
+        step = len(data_points) / target_points
+        reduced_points = []
+        
+        for i in range(target_points):
+            index = int(i * step)
+            if index < len(data_points):
+                reduced_points.append(data_points[index])
+        
+        return reduced_points
+    
+    def _normalize_for_comparison_streamlined(self, processed_data: Dict[str, Any], 
+                                           normalize_mode: NormalizeMode) -> Dict[str, Any]:
+        """Streamlined normalization for comparison."""
+        try:
+            chart_data = {}
+            
+            for symbol, prices in processed_data.items():
+                if not prices:
+                    continue
+                
+                # Sort by date
+                sorted_prices = sorted(prices, key=lambda x: x.get('date', ''))
+                
+                if normalize_mode == NormalizeMode.INDEX_100:
+                    # Normalize to index starting at 1000
+                    first_price = sorted_prices[0].get('close') or sorted_prices[0].get('price', 1)
+                    if first_price <= 0:
+                        first_price = 1
+                    
+                    chart_points = []
+                    for price_data in sorted_prices:
+                        current_price = price_data.get('close') or price_data.get('price', first_price)
+                        index_value = (current_price / first_price) * 1000
+                        
+                        chart_points.append(ChartDataPoint(
+                            date=datetime.strptime(price_data.get('date'), '%Y-%m-%d').date() if isinstance(price_data.get('date'), str) else price_data.get('date'),
+                            value=index_value,
+                            raw_value=current_price
+                        ))
+                    
+                    chart_data[symbol] = chart_points
+                
+                elif normalize_mode == NormalizeMode.PERCENT_CHANGE:
+                    # Normalize to percentage change from start
+                    first_price = sorted_prices[0].get('close') or sorted_prices[0].get('price', 1)
+                    if first_price <= 0:
+                        first_price = 1
+                    
+                    chart_points = []
+                    for price_data in sorted_prices:
+                        current_price = price_data.get('close') or price_data.get('price', first_price)
+                        percent_change = ((current_price - first_price) / first_price) * 100
+                        
+                        chart_points.append(ChartDataPoint(
+                            date=datetime.strptime(price_data.get('date'), '%Y-%m-%d').date() if isinstance(price_data.get('date'), str) else price_data.get('date'),
+                            value=percent_change,
+                            raw_value=current_price
+                        ))
+                    
+                    chart_data[symbol] = chart_points
+            
+            return chart_data
+            
+        except Exception as e:
+            logger.error(f"Error in streamlined comparison normalization: {e}")
+            return {}
     
     def _get_date_range(self, period: PeriodPreset) -> Tuple[date, date]:
         """Get start and end dates for the given period."""
@@ -268,6 +719,11 @@ class ChartService:
                            end_date: date, include_dividends: bool) -> List[Dict[str, Any]]:
         """Get raw price data for an asset with caching."""
         try:
+            # Check if symbol is actively trading
+            if not self._is_symbol_actively_trading(asset):
+                logger.info(f"Symbol {asset.symbol} is not actively trading - no price data available")
+                return []
+            
             # Check cache for raw data
             cache_key = self._get_cache_key(
                 'raw_data',
@@ -296,7 +752,12 @@ class ChartService:
                 return []
             
             if not raw_prices:
-                logger.warning(f"No price data for {asset.symbol}")
+                # Check if symbol is actively trading to provide better error message
+                quote = asset.get_quote()
+                if quote and quote.get('isActivelyTrading') is False:
+                    logger.info(f"No price data for {asset.symbol} - symbol is not actively trading")
+                else:
+                    logger.warning(f"No price data available for {asset.symbol}")
                 return []
             
             # Ensure we have a list of dictionaries
@@ -395,10 +856,10 @@ class ChartService:
                         logger.warning(f"Skipping price with non-numeric value for {symbol}: {price_value}")
                         continue
                     
-                    # Convert to base currency if needed
+                    # Convert to base currency if needed using smart conversion
                     if asset.currency and asset.currency != base_currency:
                         converted_price = self.currency_converter.convert_amount(
-                            Decimal(str(price_value)), asset.currency, base_currency
+                            Decimal(str(price_value)), asset.currency, base_currency, price.get('date')
                         )
                         if converted_price is None:
                             logger.warning(f"Currency conversion failed for {symbol}: {asset.currency} to {base_currency}")
@@ -951,6 +1412,7 @@ class ChartService:
     def _calculate_metrics(self, chart_data: Dict[str, List[ChartDataPoint]], 
                           period: PeriodPreset, asset_data: Dict[str, Any]) -> Dict[str, Dict[str, float]]:
         """Calculate performance metrics for each asset."""
+        logger.info(f"_calculate_metrics called with period type: {type(period)}, value: {getattr(period, 'value', 'NO_VALUE_ATTR')}")
         metrics = {}
         
         for symbol, points in chart_data.items():

@@ -426,7 +426,7 @@ def debug_compare(request, symbols=None):
     base_currency = request.GET.get('base_currency', 'USD').upper()
     include_dividends = True  # Always include dividends
     period = request.GET.get('period', 'YTD')
-    normalize_mode = request.GET.get('normalize_mode', 'index100')
+    normalize_mode = request.GET.get('normalize_mode', 'percent_change')
     
     if not symbols:
         context = {
@@ -490,11 +490,11 @@ def compare(request, symbols=None):
     base_currency = request.GET.get('base_currency', 'USD').upper()
     include_dividends = True  # Always include dividends
     period = request.GET.get('period', '1Y')
-    normalize_mode = request.GET.get('normalize_mode', 'index100')
+    normalize_mode = request.GET.get('normalize_mode', 'percent_change')
     
     # Validate base currency
-    from .currency_converter import get_currency_converter
-    currency_converter = get_currency_converter()
+    from .smart_currency_converter import get_smart_currency_converter
+    currency_converter = get_smart_currency_converter()
     if not currency_converter.is_currency_supported(base_currency):
         context = {
             'title': _('Compare Assets'),

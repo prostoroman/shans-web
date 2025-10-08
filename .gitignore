@@ -160,3 +160,4 @@ Thumbs.db
 *.sqlite3
 *.db
 *.djcache
+/.django_cache

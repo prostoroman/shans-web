@@ -434,7 +434,53 @@ class StockAsset(BaseAsset):
     def get_quote(self) -> Optional[Dict[str, Any]]:
         """Get current quote data."""
         if self._quote_data is None:
+            # Try profile first (for stocks)
             self._quote_data = get_profile(self.symbol)
+            
+            # If no profile data, try to get quote data from price series (for indices)
+            if not self._quote_data:
+                try:
+                    from apps.data.fmp_client import get_price_series
+                    from datetime import datetime, timedelta
+                    
+                    # Get latest price data
+                    end_date = datetime.now().strftime('%Y-%m-%d')
+                    start_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+                    price_data = get_price_series(self.symbol, start_date, end_date)
+                    
+                    if price_data and len(price_data) > 0:
+                        # Use the most recent data point
+                        latest_price = price_data[0]
+                        
+                        # Get name and exchange without calling get_quote() to avoid recursion
+                        asset_name = self.symbol  # Fallback to symbol
+                        asset_exchange = ''
+                        
+                        # Try to get name from instrument if available
+                        if self._instrument:
+                            asset_name = self._instrument.name
+                            asset_exchange = self._instrument.exchange or ''
+                        
+                        # Try to get exchange from symbol patterns
+                        if not asset_exchange:
+                            if self.symbol.endswith('.ME'):
+                                asset_exchange = 'MOEX'
+                            elif self.symbol.endswith('.L'):
+                                asset_exchange = 'LSE'
+                            # Add more patterns as needed
+                        
+                        self._quote_data = {
+                            'symbol': self.symbol,
+                            'name': asset_name,
+                            'price': latest_price.get('close') or latest_price.get('adjClose'),
+                            'currency': self.currency,
+                            'exchange': asset_exchange,
+                            'isActivelyTrading': True,  # Assume active if we have price data
+                            'type': 'index'  # Mark as index since no profile data
+                        }
+                except Exception as e:
+                    logger.warning(f"Failed to get quote data for {self.symbol}: {e}")
+        
         return self._quote_data
     
     def get_price_history(self, days: int = 365, include_dividends: bool = False) -> List[Dict[str, Any]]:

@@ -703,6 +703,26 @@ class Forex(models.Model):
         max_length=3,
         verbose_name=_("Quote Currency")
     )
+    from_currency = models.CharField(
+        max_length=3,
+        blank=True,
+        verbose_name=_("From Currency")
+    )
+    to_currency = models.CharField(
+        max_length=3,
+        blank=True,
+        verbose_name=_("To Currency")
+    )
+    from_name = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name=_("From Currency Name")
+    )
+    to_name = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name=_("To Currency Name")
+    )
     exchange = models.CharField(
         max_length=50,
         blank=True,

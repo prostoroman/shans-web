@@ -67,6 +67,9 @@
                                 <!-- Hidden input to always include dividends -->
                                 <input type="hidden" name="include_dividends" value="true">
                                 
+                                <!-- Hidden input to set percent_change as default mode -->
+                                <input type="hidden" name="normalize_mode" value="percent_change">
+                                
                             </div>
                         </div>
                         <div class="col-md-4">
@@ -141,11 +144,7 @@
                             </select>
                         </div>
                         <div class="col-md-3">
-                            <label for="normalize_mode" class="form-label">{% trans "Comparison Mode" %}</label>
-                            <select class="form-select" name="normalize_mode" id="normalize_mode">
-                                <option value="index100" {% if normalize_mode == 'index100' %}selected{% endif %}>{% trans "Index" %}</option>
-                                <option value="percent_change" {% if normalize_mode == 'percent_change' %}selected{% endif %}>{% trans "% from start" %}</option>
-                            </select>
+                            <!-- Comparison Mode removed - now handled by chart toggle -->
                         </div>
                     </div>
                 </form>
@@ -173,19 +172,30 @@
         <div class="row mb-4">
             <div class="col-12">
                 <div class="card">
-                    <div class="card-header">
+                    <div class="card-header d-flex justify-content-between align-items-center">
                         <h5 class="mb-0">
                             <i class="fas fa-chart-line me-2"></i>{% trans "Investment Performance Chart" %}
                         </h5>
-                        <small class="text-muted">
-                            {% if normalize_mode == 'index100' %}
-                                {% trans "Shows normalized performance starting at 1000 for each asset. Data includes dividends and is converted to" %} {{ base_currency }}.
-                            {% else %}
-                                {% trans "Shows percentage change from the start of the period. Data includes dividends and represents the returns of an invested amount in" %} {{ base_currency }}.
-                            {% endif %}
-                        </small>
+                        <!-- Mode Switch Toggle -->
+                        <div class="btn-group" role="group" aria-label="{% trans 'Comparison Mode' %}">
+                            <input type="radio" class="btn-check" name="chartMode" id="percentMode" value="percent_change" checked>
+                            <label class="btn btn-outline-primary btn-sm" for="percentMode">
+                                <i class="fas fa-percentage me-1"></i>{% trans "% Change" %}
+                            </label>
+                            
+                            <input type="radio" class="btn-check" name="chartMode" id="indexMode" value="index100">
+                            <label class="btn btn-outline-primary btn-sm" for="indexMode">
+                                <i class="fas fa-chart-line me-1"></i>{% trans "Index" %}
+                            </label>
+                        </div>
                     </div>
                     <div class="card-body">
+                        <!-- Mode Description -->
+                        <div class="mb-3">
+                            <small class="text-muted" id="modeDescription">
+                                {% trans "Shows percentage change from the start of the period. Data includes dividends and represents the returns of an invested amount in" %} {{ base_currency }}.
+                            </small>
+                        </div>
                         <div style="height: 400px;">
                             <canvas id="comparisonChart"></canvas>
                         </div>
@@ -663,10 +673,8 @@ class SymbolSearch {
         this.searchInput.addEventListener('input', (e) => this.handleSearch(e.target.value));
         this.searchInput.addEventListener('keydown', (e) => this.handleKeyDown(e));
         this.searchInput.addEventListener('focus', () => {
-            // Show results if there are actual results, or if user has typed something
-            if ((this.allResults && this.allResults.length > 0) || this.currentSearchQuery.length >= 2) {
-                this.showResults();
-            }
+            // Always show dropdown when user focuses on search input
+            this.showResults();
         });
         // Removed blur event listener - it was causing conflicts
         
@@ -742,10 +750,11 @@ class SymbolSearch {
             clearTimeout(this.searchTimeout);
         }
         
-        // Hide results if query is too short
+        // Show placeholder if query is too short
         if (this.currentSearchQuery.length < 2) {
-            console.log('Query too short, hiding results');
-            this.hideResults();
+            console.log('Query too short, showing placeholder');
+            this.showPlaceholder();
+            this.showResults();
             this.allResults = []; // Clear stored results
             this.exchangeFiltersUpdated = false; // Reset exchange filters flag
             return;
@@ -904,6 +913,9 @@ class SymbolSearch {
         
         console.log('Adding symbol:', symbolUpper);
         
+        // Check if this is the first symbol being selected
+        const isFirstSymbol = this.selectedSymbolsList.size === 0;
+        
         // Add to selected symbols
         this.selectedSymbolsList.add(symbolUpper);
         
@@ -922,6 +934,14 @@ class SymbolSearch {
         // Update hidden input
         this.updateSymbolsInput();
         
+        // Auto-change base currency if this is the first symbol
+        if (isFirstSymbol) {
+            console.log('First symbol selected, attempting to change base currency');
+            this.autoChangeBaseCurrency(symbol, name, type);
+        } else {
+            console.log('Subsequent symbol selected, not changing base currency');
+        }
+        
         // Clear search input
         this.searchInput.value = '';
         this.currentSearchQuery = ''; // Reset the current search query
@@ -932,6 +952,109 @@ class SymbolSearch {
         
         // Focus back to search input
         this.searchInput.focus();
+    }
+    
+    autoChangeBaseCurrency(symbol, name, type) {
+        console.log('Auto-changing base currency for first symbol:', symbol);
+        
+        let currency = null;
+        
+        // First, try to get currency from search result data
+        const searchResult = this.allResults.find(result => 
+            result.symbol.toUpperCase() === symbol.toUpperCase()
+        );
+        
+        if (searchResult && searchResult.currency) {
+            currency = searchResult.currency.toUpperCase();
+            console.log('Found currency from search result:', currency);
+        } else {
+            // Fallback: try to detect currency from symbol patterns
+            currency = this.detectCurrencyFromSymbol(symbol);
+            if (currency) {
+                console.log('Detected currency from symbol pattern:', currency);
+            }
+        }
+        
+        if (currency) {
+            // Find the base currency select element
+            const baseCurrencySelect = document.getElementById('base_currency');
+            if (baseCurrencySelect) {
+                // Check if the currency exists in the select options
+                const optionExists = Array.from(baseCurrencySelect.options).some(option => 
+                    option.value.toUpperCase() === currency
+                );
+                
+                if (optionExists) {
+                    // Change the base currency
+                    baseCurrencySelect.value = currency;
+                    console.log('Base currency changed to:', currency);
+                    
+                    // Trigger change event to notify any listeners
+                    baseCurrencySelect.dispatchEvent(new Event('change', { bubbles: true }));
+                } else {
+                    console.log('Currency', currency, 'not found in base currency options');
+                }
+            } else {
+                console.log('Base currency select element not found');
+            }
+        } else {
+            console.log('No currency information found for symbol:', symbol);
+        }
+    }
+    
+    detectCurrencyFromSymbol(symbol) {
+        const symbolUpper = symbol.toUpperCase();
+        
+        // Forex pairs (6 characters: EURUSD, GBPUSD, etc.)
+        if (symbolUpper.length === 6) {
+            const baseCurrency = symbolUpper.substring(0, 3);
+            const quoteCurrency = symbolUpper.substring(3, 6);
+            
+            // Common forex base currencies
+            const forexCurrencies = ['EUR', 'GBP', 'JPY', 'CHF', 'AUD', 'CAD', 'NZD', 'RUB', 'CNY', 'INR', 'BRL', 'MXN', 'KRW', 'SGD', 'HKD', 'NOK', 'SEK', 'DKK', 'PLN', 'CZK', 'HUF', 'TRY', 'ZAR'];
+            
+            if (forexCurrencies.includes(baseCurrency)) {
+                return baseCurrency;
+            }
+        }
+        
+        // Exchange suffixes
+        const exchangeCurrencyMap = {
+            '.ME': 'RUB',      // Moscow Exchange
+            '.L': 'GBP',       // London Stock Exchange
+            '.T': 'JPY',       // Tokyo Stock Exchange
+            '.F': 'EUR',       // Frankfurt Stock Exchange
+            '.PA': 'EUR',      // Euronext Paris
+            '.AS': 'EUR',      // Euronext Amsterdam
+            '.BR': 'EUR',      // Euronext Brussels
+            '.LS': 'EUR',      // Euronext Lisbon
+            '.OL': 'NOK',      // Oslo Stock Exchange
+            '.ST': 'SEK',      // Stockholm Stock Exchange
+            '.CO': 'DKK',      // Copenhagen Stock Exchange
+            '.HE': 'EUR',      // Helsinki Stock Exchange
+            '.WA': 'PLN',      // Warsaw Stock Exchange
+            '.BO': 'INR',      // Bombay Stock Exchange
+            '.NS': 'INR',      // National Stock Exchange of India
+            '.HK': 'HKD',      // Hong Kong Exchange
+            '.SS': 'CNY',      // Shanghai Stock Exchange
+            '.SZ': 'CNY',      // Shenzhen Stock Exchange
+            '.KS': 'KRW',      // Korea Exchange
+            '.TW': 'TWD',      // Taiwan Stock Exchange
+            '.SI': 'SGD',      // Singapore Exchange
+            '.AX': 'AUD',      // Australian Securities Exchange
+            '.TO': 'CAD',      // Toronto Stock Exchange
+            '.MX': 'MXN',      // Mexican Stock Exchange
+            '.SA': 'BRL'       // Brazilian Stock Exchange
+        };
+        
+        for (const [suffix, currency] of Object.entries(exchangeCurrencyMap)) {
+            if (symbolUpper.endsWith(suffix)) {
+                return currency;
+            }
+        }
+        
+        // Default to USD for US exchanges and unknown
+        return 'USD';
     }
     
     removeSymbol(symbol) {
@@ -983,16 +1106,30 @@ class SymbolSearch {
     
     showResults() {
         console.log('showResults called, content length:', this.searchResultsContent.innerHTML.trim().length);
-        if (this.searchResultsContent.innerHTML.trim()) {
-            this.searchResults.style.display = 'block';
-            console.log('Results shown');
-        } else {
-            console.log('No content to show');
+        
+        // If no meaningful content (only comments or whitespace), show placeholder
+        const content = this.searchResultsContent.innerHTML.trim();
+        if (!content || content === '<!-- Results will be populated here -->' || !this.searchResultsContent.querySelector('.search-result-item, .search-no-results, .search-placeholder')) {
+            this.showPlaceholder();
         }
+        
+        this.searchResults.style.display = 'block';
+        console.log('Results shown');
     }
     
     hideResults() {
         this.searchResults.style.display = 'none';
+    }
+    
+    showPlaceholder() {
+        this.searchResultsContent.innerHTML = `
+            <div class="search-placeholder">
+                <i class="fas fa-search me-2"></i>
+                Start typing to search for stocks, ETFs, commodities, crypto, or forex...
+                <br>
+                <small class="text-muted">Type at least 2 characters to see results</small>
+            </div>
+        `;
     }
     
     showLoading() {
@@ -1037,42 +1174,13 @@ class SymbolSearch {
         return currencySymbols[currency] || currency || '$';
     }
     
-    // Convert USD price to trading currency (simplified conversion rates)
+    // Convert USD price to trading currency using smart conversion
     convertPriceToCurrency(priceUsd, currency) {
         if (!priceUsd || currency === 'USD') return priceUsd;
         
-        // Simplified conversion rates (in production, use real-time rates)
-        const conversionRates = {
-            'EUR': 0.85,
-            'GBP': 0.73,
-            'JPY': 110,
-            'RUB': 75,
-            'CAD': 1.25,
-            'AUD': 1.35,
-            'CHF': 0.92,
-            'CNY': 6.45,
-            'SEK': 8.5,
-            'NOK': 8.8,
-            'DKK': 6.3,
-            'PLN': 3.9,
-            'CZK': 21.5,
-            'HUF': 300,
-            'BRL': 5.2,
-            'MXN': 20,
-            'INR': 74,
-            'KRW': 1180,
-            'SGD': 1.35,
-            'HKD': 7.8,
-            'NZD': 1.4,
-            'TRY': 8.5,
-            'ZAR': 14.5,
-            'THB': 33
-        };
-        
-        const rate = conversionRates[currency];
-        if (!rate) return priceUsd; // Fallback to USD if no rate available
-        
-        return priceUsd * rate;
+        // For now, return the original price as the server-side conversion handles this
+        // The smart currency converter in the backend handles all conversions
+        return priceUsd;
     }
     
     getShortExchangeName(fullName) {
@@ -1466,6 +1574,35 @@ if (typeof Chart !== 'undefined' && datasets.length > 0) {
         
         const chart = new Chart(ctx, chartConfig);
         console.log('Chart created successfully');
+        
+        // Store chart reference globally for mode switching
+        window.comparisonChart = chart;
+        
+        // Add mode switching functionality
+        const modeDescription = document.getElementById('modeDescription');
+        
+        // Mode descriptions
+        const modeDescriptions = {
+            'percent_change': '{% trans "Shows percentage change from the start of the period. Data includes dividends and represents the returns of an invested amount in" %} ' + chartCurrency + '.',
+            'index100': '{% trans "Shows normalized performance starting at 1000 for each asset. Data includes dividends and is converted to" %} ' + chartCurrency + '.'
+        };
+        
+        // Handle mode switching
+        document.querySelectorAll('input[name="chartMode"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (this.checked) {
+                    const newMode = this.value;
+                    console.log('Switching to mode:', newMode);
+                    
+                    // Update description
+                    modeDescription.textContent = modeDescriptions[newMode];
+                    
+                    // Update chart
+                    updateChartMode(chart, newMode);
+                }
+            });
+        });
+        
     } catch (error) {
         console.error('Error creating chart:', error);
         document.getElementById('comparisonChart').innerHTML = '<p class="text-center text-muted">{% trans "Error creating chart" %}</p>';
@@ -1478,6 +1615,57 @@ if (typeof Chart !== 'undefined' && datasets.length > 0) {
         console.error('Chart.js is not loaded');
         document.getElementById('comparisonChart').innerHTML = '<p class="text-center text-muted">{% trans "Chart library not loaded" %}</p>';
     }
+}
+
+// Function to update chart mode
+function updateChartMode(chart, mode) {
+    if (!chart || !chart.data || !chart.data.datasets) {
+        console.error('Chart not available for mode update');
+        return;
+    }
+    
+    console.log('Updating chart mode to:', mode);
+    
+    // Update Y-axis configuration
+    const yAxis = chart.options.scales.y;
+    
+    if (mode === 'percent_change') {
+        yAxis.title.text = '{% trans "Percentage Change from Start" %} (%)';
+        yAxis.ticks.callback = function(value) {
+            return value.toFixed(1) + '%';
+        };
+    } else if (mode === 'index100') {
+        yAxis.title.text = '{% trans "Index Value (Base: 1000)" %}';
+        yAxis.ticks.callback = function(value) {
+            return value.toFixed(0);
+        };
+    }
+    
+    // Update tooltip callbacks
+    chart.options.plugins.tooltip.callbacks.label = function(context) {
+        const value = context.parsed.y;
+        const rawValue = context.raw.rawValue;
+        let label = context.dataset.label + ': ';
+        
+        if (mode === 'index100') {
+            label += value.toFixed(2);
+            if (rawValue) {
+                label += ' ({{ base_currency }}' + rawValue.toFixed(2) + ')';
+            }
+            label += ' {% trans "index" %}';
+        } else {
+            label += value.toFixed(2) + '%';
+            if (rawValue) {
+                label += ' ({{ base_currency }}' + rawValue.toFixed(2) + ')';
+            }
+            label += ' {% trans "return" %}';
+        }
+        
+        return label;
+    };
+    
+    // Update chart
+    chart.update();
 }
 </script>
 {% endif %}
@@ -1878,6 +2066,13 @@ function saveComparison() {
     font-style: italic;
 }
 
+.search-placeholder {
+    padding: 20px;
+    text-align: center;
+    color: #6c757d;
+    font-style: italic;
+}
+
 
 /* Search Filters */
 .search-filters {
@@ -1891,7 +2086,6 @@ function saveComparison() {
     gap: 8px;
     flex-wrap: wrap;
     padding: 8px;
-    border-bottom: 1px solid #dee2e6;
 }
 
 .filter-btn {

@@ -182,8 +182,8 @@ class CompareAPIView(APIView):
             return Response({'error': _('Symbols parameter is required')}, status=status.HTTP_400_BAD_REQUEST)
         
         # Validate base currency
-        from .currency_converter import get_currency_converter
-        currency_converter = get_currency_converter()
+        from .smart_currency_converter import get_smart_currency_converter
+        currency_converter = get_smart_currency_converter()
         if not currency_converter.is_currency_supported(base_currency):
             return Response(
                 {'error': _('Unsupported currency: {}').format(base_currency)},
@@ -388,7 +388,7 @@ class ForexSearchAPIView(APIView):
 
 
 class SymbolSearchAPIView(APIView):
-    """GET /api/v1/search?q=<query> - Optimized symbol search using FMP stable endpoints"""
+    """GET /api/v1/search?q=<query> - Optimized symbol search using FMP unified search endpoint"""
     # Temporarily disable throttling for development
     throttle_classes = []
 
@@ -442,134 +442,105 @@ class SymbolSearchAPIView(APIView):
                 except Exception as e:
                     logger.warning(f"Error searching ISIN for {query}: {e}")
             
-            # 2. Try symbol search first (most efficient)
+            # 2. Use unified search for comprehensive results (NEW APPROACH)
             if not results:
                 try:
-                    symbol_results = fmp_client.search_symbols(query)
-                    for item in symbol_results[:limit]:
+                    unified_results = fmp_client.unified_search(query, limit=limit)
+                    
+                    # Enhance results with additional data and scoring
+                    for item in unified_results:
                         symbol = item.get('symbol', '')
                         if symbol:
-                            # Get profile for additional data
-                            profile = fmp_client.get_profile(symbol)
-                            if profile:
-                                asset_type = 'etf' if profile.get('isEtf') or profile.get('isFund') else 'stock'
-                                results.append({
-                                    'symbol': symbol,
-                                    'name': profile.get('companyName', item.get('name', '')),
-                                    'currency': profile.get('currency', item.get('currency', 'USD')),
-                                    'exchangeFullName': profile.get('exchange', item.get('exchange', '')),
-                                    'exchange': profile.get('exchange', item.get('exchange', '')),
-                                    'type': asset_type,
-                                    'score': 100 if symbol.upper() == query_upper else 90
-                                })
-                            else:
-                                # Fallback if profile lookup fails
-                                results.append({
-                                    'symbol': symbol,
-                                    'name': item.get('name', ''),
-                                    'currency': item.get('currency', 'USD'),
-                                    'exchangeFullName': item.get('exchange', ''),
-                                    'exchange': item.get('exchange', ''),
-                                    'type': 'stock',
-                                    'score': 85
-                                })
+                            # Boost score for exact symbol matches
+                            score = item.get('score', 50)
+                            if symbol.upper() == query_upper:
+                                score = max(score, 100)
+                            elif symbol.upper().startswith(query_upper):
+                                score = max(score, 90)
+                            
+                            # Get additional profile data for stocks/ETFs
+                            if item.get('type') in ['stock', 'etf']:
+                                try:
+                                    profile = fmp_client.get_profile(symbol)
+                                    if profile:
+                                        item['name'] = profile.get('companyName', item.get('name', ''))
+                                        item['currency'] = profile.get('currency', item.get('currency', 'USD'))
+                                        item['exchangeFullName'] = profile.get('exchange', item.get('exchange', ''))
+                                        item['exchange'] = profile.get('exchange', item.get('exchange', ''))
+                                        # Update asset type based on profile
+                                        if profile.get('isEtf') or profile.get('isFund'):
+                                            item['type'] = 'etf'
+                                        else:
+                                            item['type'] = 'stock'
+                                except Exception:
+                                    pass  # Use original data if profile lookup fails
+                            
+                            item['score'] = score
+                            results.append(item)
+                            
                 except Exception as e:
-                    logger.warning(f"Error searching symbols for {query}: {e}")
+                    logger.warning(f"Error in unified search for {query}: {e}")
             
-            # 3. Try commodities search from database (always search commodities)
-            try:
-                # Search commodities in database
-                commodities = Commodity.objects.filter(
-                    is_active=True
-                ).filter(
-                    models.Q(symbol__icontains=query) | 
-                    models.Q(name__icontains=query)
-                )[:5]  # Limit to 5 commodities to avoid overwhelming results
-                
-                for commodity in commodities:
-                    results.append({
-                        'symbol': commodity.symbol,
-                        'name': commodity.name,
-                        'currency': commodity.currency,
-                        'exchange': 'COMMODITY',
-                        'exchangeFullName': 'Commodity Exchange',
-                        'type': 'commodity',
-                        'score': 98 if commodity.symbol.upper() == query_upper else 90
-                    })
-            except Exception as e:
-                logger.warning(f"Error searching commodities for {query}: {e}")
-            
-            # 4. Try cryptocurrencies search
-            if not results:
+            # 3. Fallback: Try individual searches if unified search fails or returns few results
+            if len(results) < 5:
                 try:
-                    crypto_results = fmp_client.search_cryptocurrencies(query)
-                    for item in crypto_results[:limit]:
-                        symbol = item.get('symbol', '')
-                        if symbol:
+                    # Try commodities search from database
+                    commodities = Commodity.objects.filter(
+                        is_active=True
+                    ).filter(
+                        models.Q(symbol__icontains=query) | 
+                        models.Q(name__icontains=query)
+                    )[:5]  # Limit to 5 commodities
+                    
+                    for commodity in commodities:
+                        # Check if already in results
+                        if not any(r.get('symbol') == commodity.symbol for r in results):
                             results.append({
-                                'symbol': symbol,
-                                'name': item.get('name', symbol),
-                                'currency': 'USD',  # Most crypto quotes are in USD
-                                'exchange': 'CCC',  # Cryptocurrency exchange
-                                'exchangeFullName': 'Cryptocurrency Exchange',
-                                'type': 'cryptocurrency',
-                                'score': 95 if symbol.upper() == query_upper else 85
+                                'symbol': commodity.symbol,
+                                'name': commodity.name,
+                                'currency': commodity.currency,
+                                'exchange': 'COMMODITY',
+                                'exchangeFullName': 'Commodity Exchange',
+                                'type': 'commodity',
+                                'score': 98 if commodity.symbol.upper() == query_upper else 90
                             })
                 except Exception as e:
-                    logger.warning(f"Error searching cryptocurrencies for {query}: {e}")
-            
-            # 5. Try forex search
-            if not results:
+                    logger.warning(f"Error searching commodities for {query}: {e}")
+                
+                # Try forex search from database
                 try:
-                    forex_results = fmp_client.search_forex(query)
-                    for item in forex_results[:limit]:
-                        symbol = item.get('symbol', '')
-                        if symbol:
+                    from apps.data.models import Forex
+                    from django.db.models import Q
+                    
+                    forex_pairs = Forex.objects.filter(
+                        Q(symbol__icontains=query) | 
+                        Q(name__icontains=query) |
+                        Q(from_currency__icontains=query) |
+                        Q(to_currency__icontains=query) |
+                        Q(from_name__icontains=query) |
+                        Q(to_name__icontains=query)
+                    ).filter(is_active=True)[:5]
+                    
+                    for pair in forex_pairs:
+                        # Check if already in results
+                        if not any(r.get('symbol') == pair.symbol for r in results):
                             results.append({
-                                'symbol': symbol,
-                                'name': item.get('name', symbol),
-                                'currency': 'USD',  # Most forex pairs are quoted against USD
+                                'symbol': pair.symbol,
+                                'name': pair.name,
+                                'currency': pair.to_currency or pair.quote_currency,
                                 'exchange': 'FOREX',
                                 'exchangeFullName': 'Foreign Exchange',
                                 'type': 'forex',
-                                'score': 95 if symbol.upper() == query_upper else 85
+                                'score': 95 if pair.symbol.upper() == query_upper else 85,
+                                'base_currency': pair.base_currency,
+                                'quote_currency': pair.quote_currency,
+                                'from_currency': pair.from_currency,
+                                'to_currency': pair.to_currency,
+                                'from_name': pair.from_name,
+                                'to_name': pair.to_name,
                             })
                 except Exception as e:
                     logger.warning(f"Error searching forex for {query}: {e}")
-            
-            # 6. If no results from symbol search, try company name search
-            if not results:
-                try:
-                    company_results = fmp_client.search_by_company_name(query)
-                    for item in company_results[:limit]:
-                        symbol = item.get('symbol', '')
-                        if symbol:
-                            # Get profile for additional data
-                            profile = fmp_client.get_profile(symbol)
-                            if profile:
-                                asset_type = 'etf' if profile.get('isEtf') or profile.get('isFund') else 'stock'
-                                results.append({
-                                    'symbol': symbol,
-                                    'name': profile.get('companyName', item.get('name', '')),
-                                    'currency': profile.get('currency', item.get('currency', 'USD')),
-                                    'exchangeFullName': profile.get('exchange', item.get('exchange', '')),
-                                    'exchange': profile.get('exchange', item.get('exchange', '')),
-                                    'type': asset_type,
-                                    'score': 80
-                                })
-                            else:
-                                # Fallback if profile lookup fails
-                                results.append({
-                                    'symbol': symbol,
-                                    'name': item.get('name', ''),
-                                    'currency': item.get('currency', 'USD'),
-                                    'exchangeFullName': item.get('exchange', ''),
-                                    'exchange': item.get('exchange', ''),
-                                    'type': 'stock',
-                                    'score': 75
-                                })
-                except Exception as e:
-                    logger.warning(f"Error searching companies for {query}: {e}")
             
             # Sort by score (highest first) and limit results
             results.sort(key=lambda x: x.get('score', 0), reverse=True)

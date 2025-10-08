@@ -6,10 +6,12 @@ retry/backoff and aggressive Django cache. Fallback to direct HTTP if needed.
 """
 
 import os
+import re
 import time
 import logging
 from typing import Dict, List, Optional, Any, Callable, Tuple
 from datetime import datetime, date
+from django.db.models import Q
 
 import requests
 
@@ -24,6 +26,26 @@ logger = logging.getLogger(__name__)
 # FMP API configuration
 BASE_URL = "https://financialmodelingprep.com/api/v3"
 STABLE_BASE_URL = "https://financialmodelingprep.com/stable"
+
+
+def _sanitize_cache_key(key_part: str) -> str:
+    """
+    Sanitize cache key part to remove characters that cause memcached warnings.
+    
+    Args:
+        key_part: The part of the cache key to sanitize
+        
+    Returns:
+        Sanitized cache key part safe for memcached
+    """
+    # Replace spaces, periods, and other problematic characters with underscores
+    # Keep alphanumeric characters, hyphens, and underscores
+    sanitized = re.sub(r'[^a-zA-Z0-9_-]', '_', str(key_part))
+    # Remove multiple consecutive underscores
+    sanitized = re.sub(r'_+', '_', sanitized)
+    # Remove leading/trailing underscores
+    sanitized = sanitized.strip('_')
+    return sanitized
 
 
 def _get_settings():
@@ -448,7 +470,7 @@ def search_symbols(query: str) -> List[Dict[str, Any]]:
     """
     settings = _get_settings()
     ttl = 24 * 60 * 60  # search can be cached longer
-    cache_key = f"fmp:search:{query.strip().lower()}"
+    cache_key = f"fmp:search:{_sanitize_cache_key(query.strip().lower())}"
 
     def loader():
         # Use the stable endpoint for symbol search
@@ -460,6 +482,149 @@ def search_symbols(query: str) -> List[Dict[str, Any]]:
     except Exception as e:  # noqa: BLE001
         logger.error(f"Error searching symbols for {query}: {e}")
         return []
+
+
+def unified_search(query: str, limit: int = 50) -> List[Dict[str, Any]]:
+    """
+    Unified search across all asset types using both FMP search-symbol and search-name endpoints.
+    This provides comprehensive coverage for both symbol and company name searches.
+    
+    Args:
+        query: Search query
+        limit: Maximum number of results to return
+        
+    Returns:
+        List of matching instruments with categorized asset types
+    """
+    settings = _get_settings()
+    ttl = 24 * 60 * 60  # Cache for 24 hours
+    cache_key = f"fmp:unified_search:{_sanitize_cache_key(query.strip().lower())}"
+
+    def loader():
+        all_results = []
+        
+        # 1. Search by symbol (for exact symbol matches and symbol-like queries)
+        try:
+            symbol_data = _http_get_json("search-symbol", {"query": query}, use_stable=True)
+            if symbol_data:
+                for result in symbol_data:
+                    enhanced_result = _categorize_search_result(result)
+                    if enhanced_result:
+                        all_results.append(enhanced_result)
+        except Exception as e:
+            logger.warning(f"Error in symbol search for {query}: {e}")
+        
+        # 2. Search by company name (for company name searches)
+        try:
+            name_data = _http_get_json("search-name", {"query": query}, use_stable=True)
+            if name_data:
+                for result in name_data:
+                    enhanced_result = _categorize_search_result(result)
+                    if enhanced_result:
+                        # Check for duplicates (same symbol)
+                        if not any(r.get('symbol') == enhanced_result.get('symbol') for r in all_results):
+                            all_results.append(enhanced_result)
+        except Exception as e:
+            logger.warning(f"Error in name search for {query}: {e}")
+        
+        # Sort by score and limit results
+        all_results.sort(key=lambda x: x.get('score', 0), reverse=True)
+        return all_results[:limit]
+
+    try:
+        return _cached_call(cache_key, ttl, loader) or []
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Error in unified search for {query}: {e}")
+        return []
+
+
+def _categorize_search_result(result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Categorize a search result and determine its asset type.
+    
+    Args:
+        result: Raw search result from FMP
+        
+    Returns:
+        Enhanced result with asset type categorization, or None if invalid
+    """
+    if not isinstance(result, dict):
+        return None
+    
+    symbol = result.get('symbol', '').upper()
+    name = result.get('name', '').upper()
+    exchange = result.get('exchange', '').upper()
+    
+    # Determine asset type based on exchange, symbol patterns, and name
+    asset_type = 'stock'  # Default
+    
+    if 'ETF' in name or 'ETF' in exchange or 'EXCHANGE TRADED FUND' in name:
+        asset_type = 'etf'
+    elif 'CRYPTO' in exchange or symbol.endswith('USD') or symbol.endswith('BTC') or 'BITCOIN' in name:
+        asset_type = 'cryptocurrency'
+    elif '/' in symbol or 'FOREX' in exchange or 'FX' in exchange:
+        asset_type = 'forex'
+    elif 'GOLD' in name or 'SILVER' in name or 'OIL' in name or 'COMMODITY' in exchange:
+        asset_type = 'commodity'
+    elif exchange in ['NASDAQ', 'NYSE', 'AMEX', 'LSE', 'XETRA', 'NEO', 'MEX', 'BSE', 'TSX']:
+        asset_type = 'stock'
+    elif exchange in ['OTC', 'PINK']:
+        asset_type = 'stock'  # Treat OTC as stocks
+    
+    # Enhance the result with additional metadata
+    enhanced_result = result.copy()
+    enhanced_result['type'] = asset_type
+    enhanced_result['score'] = _calculate_search_score(result, asset_type)
+    
+    return enhanced_result
+
+
+def _calculate_search_score(result: Dict[str, Any], asset_type: str) -> int:
+    """
+    Calculate a relevance score for search results.
+    
+    Args:
+        result: Search result
+        asset_type: Determined asset type
+        
+    Returns:
+        Relevance score (higher is better)
+    """
+    symbol = result.get('symbol', '').upper()
+    name = result.get('name', '').upper()
+    exchange = result.get('exchange', '').upper()
+    
+    score = 50  # Base score
+    
+    # Boost for major exchanges
+    if exchange in ['NASDAQ', 'NYSE', 'AMEX']:
+        score += 30
+    elif exchange in ['LSE', 'XETRA']:
+        score += 20
+    elif exchange in ['OTC', 'PINK']:
+        score -= 10
+    
+    # Boost for ETFs and major asset types
+    if asset_type == 'etf':
+        score += 10
+    elif asset_type == 'cryptocurrency':
+        score += 5
+    elif asset_type == 'forex':
+        score += 5
+    
+    # Boost for well-known companies (common symbols)
+    well_known_symbols = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'BRK.A', 'BRK.B']
+    if symbol in well_known_symbols:
+        score += 20
+    
+    # Boost for major company names in the result name
+    major_companies = ['APPLE', 'MICROSOFT', 'GOOGLE', 'AMAZON', 'TESLA', 'FACEBOOK', 'NVIDIA', 'BERKSHIRE']
+    for company in major_companies:
+        if company in name:
+            score += 15
+            break
+    
+    return min(score, 100)  # Cap at 100
 
 
 def search_by_company_name(query: str) -> List[Dict[str, Any]]:
@@ -474,7 +639,7 @@ def search_by_company_name(query: str) -> List[Dict[str, Any]]:
     """
     settings = _get_settings()
     ttl = 24 * 60 * 60  # search can be cached longer
-    cache_key = f"fmp:search_name:{query.strip().lower()}"
+    cache_key = f"fmp:search_name:{_sanitize_cache_key(query.strip().lower())}"
 
     def loader():
         # Use the stable endpoint for company name search
@@ -500,7 +665,7 @@ def search_by_isin(isin: str) -> List[Dict[str, Any]]:
     """
     settings = _get_settings()
     ttl = 24 * 60 * 60  # search can be cached longer
-    cache_key = f"fmp:search_isin:{isin.strip().upper()}"
+    cache_key = f"fmp:search_isin:{_sanitize_cache_key(isin.strip().upper())}"
 
     def loader():
         # Use the stable endpoint for ISIN search
@@ -769,7 +934,7 @@ def search_etfs(query: str) -> List[Dict[str, Any]]:
     """
     settings = _get_settings()
     ttl = 24 * 60 * 60  # Cache for 24 hours since ETF list doesn't change frequently
-    cache_key = f"fmp:etf_search:{query.strip().lower()}"
+    cache_key = f"fmp:etf_search:{_sanitize_cache_key(query.strip().lower())}"
 
     def loader():
         # Get all ETFs from the stable endpoint
@@ -1021,7 +1186,7 @@ def search_cryptocurrencies(query: str) -> List[Dict[str, Any]]:
     """
     settings = _get_settings()
     ttl = 24 * 60 * 60  # Cache for 24 hours since crypto list doesn't change frequently
-    cache_key = f"fmp:crypto_search:{query.strip().lower()}"
+    cache_key = f"fmp:crypto_search:{_sanitize_cache_key(query.strip().lower())}"
 
     def loader():
         # Get all cryptocurrencies from the stable endpoint
@@ -1173,7 +1338,7 @@ def get_cryptocurrency_quote(symbol: str) -> Optional[Dict[str, Any]]:
 
 def get_forex_list() -> List[Dict[str, Any]]:
     """
-    Get list of available forex currency pairs from FMP.
+    Get list of available forex currency pairs from FMP API.
     
     Returns:
         List of available forex currency pairs
@@ -1183,8 +1348,33 @@ def get_forex_list() -> List[Dict[str, Any]]:
     cache_key = "fmp:forex_list"
 
     def loader():
-        # Common forex currency pairs that work with the API
-        # Based on FMP documentation, forex symbols are typically in format like EURUSD, GBPUSD, etc.
+        # Use the FMP stable forex-list endpoint
+        data = _http_get_json("forex-list", use_stable=True)
+        if isinstance(data, list) and data:
+            forex_pairs = []
+            for item in data:
+                if isinstance(item, dict):
+                    symbol = item.get('symbol', '')
+                    from_currency = item.get('fromCurrency', '')
+                    to_currency = item.get('toCurrency', '')
+                    from_name = item.get('fromName', '')
+                    to_name = item.get('toName', '')
+                    
+                    if symbol and from_currency and to_currency:
+                        forex_pairs.append({
+                            "symbol": symbol,
+                            "name": f"{from_name}/{to_name}" if from_name and to_name else f"{from_currency}/{to_currency}",
+                            "base_currency": from_currency,
+                            "quote_currency": to_currency,
+                            "from_currency": from_currency,
+                            "to_currency": to_currency,
+                            "from_name": from_name,
+                            "to_name": to_name,
+                        })
+            return forex_pairs
+        
+        # Fallback to hardcoded list if API fails
+        logger.warning("FMP forex-list API failed, using fallback list")
         symbols = [
             "EURUSD",    # Euro / US Dollar
             "GBPUSD",    # British Pound / US Dollar
@@ -1240,6 +1430,8 @@ def get_forex_list() -> List[Dict[str, Any]]:
                     "name": f"{base_currency}/{quote_currency}",
                     "base_currency": base_currency,
                     "quote_currency": quote_currency,
+                    "from_currency": base_currency,
+                    "to_currency": quote_currency,
                 })
         
         return forex_pairs
@@ -1253,7 +1445,7 @@ def get_forex_list() -> List[Dict[str, Any]]:
 
 def search_forex(query: str) -> List[Dict[str, Any]]:
     """
-    Search for forex currency pairs by symbol or currency.
+    Search for forex currency pairs by symbol or currency using database.
     
     Args:
         query: Search query for forex symbol or currency
@@ -1261,9 +1453,53 @@ def search_forex(query: str) -> List[Dict[str, Any]]:
     Returns:
         List of matching forex currency pairs
     """
+    try:
+        from apps.data.models import Forex
+        
+        # Search in database first
+        forex_pairs = Forex.objects.filter(
+            Q(symbol__icontains=query) |
+            Q(name__icontains=query) |
+            Q(from_currency__icontains=query) |
+            Q(to_currency__icontains=query) |
+            Q(base_currency__icontains=query) |
+            Q(quote_currency__icontains=query) |
+            Q(from_name__icontains=query) |
+            Q(to_name__icontains=query),
+            is_active=True
+        ).order_by('symbol')[:50]
+        
+        if forex_pairs.exists():
+            results = []
+            for pair in forex_pairs:
+                results.append({
+                    "symbol": pair.symbol,
+                    "name": pair.name,
+                    "base_currency": pair.base_currency,
+                    "quote_currency": pair.quote_currency,
+                    "from_currency": pair.from_currency,
+                    "to_currency": pair.to_currency,
+                    "from_name": pair.from_name,
+                    "to_name": pair.to_name,
+                    "exchange": pair.exchange,
+                    "asset_type": "forex"
+                })
+            return results
+        
+        # Fallback to API search if no database results
+        logger.info(f"No database results for forex search '{query}', trying API fallback")
+        return _search_forex_api_fallback(query)
+        
+    except Exception as e:
+        logger.error(f"Error searching forex in database for {query}: {e}")
+        return _search_forex_api_fallback(query)
+
+
+def _search_forex_api_fallback(query: str) -> List[Dict[str, Any]]:
+    """Fallback forex search using API."""
     settings = _get_settings()
     ttl = 24 * 60 * 60  # Cache for 24 hours since forex list doesn't change frequently
-    cache_key = f"fmp:forex_search:{query.strip().lower()}"
+    cache_key = f"fmp:forex_search:{_sanitize_cache_key(query.strip().lower())}"
 
     def loader():
         # Get all forex pairs
@@ -1287,6 +1523,7 @@ def search_forex(query: str) -> List[Dict[str, Any]]:
                     query_lower in name or 
                     query_lower in base_currency or 
                     query_lower in quote_currency):
+                    forex_pair['asset_type'] = 'forex'
                     matching_forex.append(forex_pair)
         
         # Sort by relevance (exact symbol matches first, then currency matches)
