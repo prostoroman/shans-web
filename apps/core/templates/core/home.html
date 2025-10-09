@@ -1,80 +1,80 @@
 {% extends "base.html" %}
 {% load i18n %}
+{% load markets_extras %}
 
 {% block title %}{% trans "Home" %} - shans.ai{% endblock %}
 
 {% block meta_description %}{% trans "Professional financial analysis, portfolio optimization, and market insights. Analyze stocks, compare investments, and optimize your portfolio with advanced tools." %}{% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-lg-8 mx-auto text-center">
-        <h1 class="display-4 mb-4">{% trans "Welcome to shans.ai" %}</h1>
-        <p class="lead mb-4">
-            {% trans "Professional financial analysis, portfolio optimization, and market insights. Make informed investment decisions with our comprehensive tools." %}
-        </p>
-        
-        <div class="row g-4 mb-5">
-            <div class="col-md-4">
-                <div class="card h-100">
-                    <div class="card-body text-center">
-                        <i class="fas fa-chart-line fa-3x text-primary mb-3"></i>
-                        <h5 class="card-title">{% trans "Market Analysis" %}</h5>
-                        <p class="card-text">{% trans "Get detailed analysis of individual stocks with key metrics, fundamentals, and performance data." %}</p>
-                        <a href="{% url 'markets:info' %}" class="btn btn-primary">{% trans "Analyze Stocks" %}</a>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="col-md-4">
-                <div class="card h-100">
-                    <div class="card-body text-center">
-                        <i class="fas fa-balance-scale fa-3x text-success mb-3"></i>
-                        <h5 class="card-title">{% trans "Compare Investments" %}</h5>
-                        <p class="card-text">{% trans "Compare multiple stocks side-by-side with correlation analysis and performance metrics." %}</p>
-                        <a href="{% url 'markets:compare' %}" class="btn btn-success">{% trans "Compare Stocks" %}</a>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="col-md-4">
-                <div class="card h-100">
-                    <div class="card-body text-center">
-                        <i class="fas fa-briefcase fa-3x text-warning mb-3"></i>
-                        <h5 class="card-title">{% trans "Portfolio Optimization" %}</h5>
-                        <p class="card-text">{% trans "Optimize your portfolio with modern portfolio theory, risk analysis, and forecasting tools." %}</p>
-                        <a href="{% url 'portfolio:form' %}" class="btn btn-warning">{% trans "Optimize Portfolio" %}</a>
-                    </div>
-                </div>
-            </div>
+<!-- Main Search Section -->
+<div class="row justify-content-center">
+    <div class="col-lg-8 col-xl-6">
+        <div class="text-center mb-5">
+            <h1 class="display-4 mb-3">{% trans "shans.ai" %}</h1>
+            <p class="lead text-muted mb-4">
+                {% trans "Professional financial analysis and market insights" %}
+            </p>
         </div>
         
-        <div class="row">
-            <div class="col-md-6">
-                <h3>{% trans "Key Features" %}</h3>
-                <ul class="list-unstyled">
-                    <li><i class="fas fa-check text-success me-2"></i>{% trans "Real-time market data via Financial Modeling Prep" %}</li>
-                    <li><i class="fas fa-check text-success me-2"></i>{% trans "Advanced portfolio optimization algorithms" %}</li>
-                    <li><i class="fas fa-check text-success me-2"></i>{% trans "Risk analysis and forecasting tools" %}</li>
-                    <li><i class="fas fa-check text-success me-2"></i>{% trans "User accounts with saved portfolios" %}</li>
-                    <li><i class="fas fa-check text-success me-2"></i>{% trans "Tiered access (Basic/Pro plans)" %}</li>
-                </ul>
-            </div>
-            
-            <div class="col-md-6">
-                <h3>{% trans "Getting Started" %}</h3>
-                <ol>
-                    <li>{% trans "Sign up for a free account" %}</li>
-                    <li>{% trans "Explore market analysis tools" %}</li>
-                    <li>{% trans "Create your first portfolio" %}</li>
-                    <li>{% trans "Optimize and track performance" %}</li>
-                </ol>
-                
-                {% if not user.is_authenticated %}
-                    <div class="mt-3">
-                        <a href="{% url 'account_signup' %}" class="btn btn-primary me-2">{% trans "Sign Up Free" %}</a>
-                        <a href="{% url 'account_login' %}" class="btn btn-outline-primary">{% trans "Login" %}</a>
+        <!-- Main Search Form -->
+        <div class="card shadow-sm">
+            <div class="card-body p-4">
+                <form method="get" id="mainSearchForm">
+                    <!-- Symbol Selection Container -->
+                    <div class="mb-3">
+                        <div class="symbol-input-container" id="symbolDropdownContainer">
+                            <!-- Selected Symbols Display -->
+                            <div class="selected-symbols mb-2" id="selectedSymbols">
+                                {% if symbols %}
+                                    {% for symbol in symbols %}
+                                        <span class="symbol-tag" data-symbol="{{ symbol }}">
+                                            <span class="symbol-text">{{ symbol }}</span>
+                                            <button type="button" class="symbol-remove" onclick="removeSymbol('{{ symbol }}')">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </span>
+                                    {% endfor %}
+                                {% endif %}
+                            </div>
+                            
+                            <!-- Search Input -->
+                            <div class="position-relative">
+                                <input type="text" 
+                                       class="form-control form-control-lg symbol-search-input" 
+                                       id="symbolSearchInput"
+                                       placeholder="{% trans 'Search for stocks, ETFs, commodities, crypto, or forex...' %}"
+                                       autocomplete="off">
+                                <div class="search-loading d-none" id="searchLoading">
+                                    <i class="fas fa-spinner fa-spin"></i>
+                                </div>
+                                
+                                <!-- Search Results Dropdown -->
+                                <div class="search-results dropdown-menu w-100" id="searchResults" style="display: none;">
+                                    <!-- Exchange Filter Buttons -->
+                                    <div class="search-filters" id="searchFilters" style="display: none;">
+                                        <div class="filter-buttons" id="filterButtons">
+                                            <button type="button" class="filter-btn active" data-exchange="all">All</button>
+                                        </div>
+                                    </div>
+                                    <div class="search-results-content" id="searchResultsContent">
+                                        <!-- Results will be populated here -->
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Hidden input for form submission -->
+                            <input type="hidden" name="symbols" id="symbolsInput" value="{% if symbols %}{{ symbols|join:',' }}{% endif %}">
+                        </div>
                     </div>
-                {% endif %}
+                    
+                    <!-- Action Button -->
+                    <div class="text-center">
+                        <button type="submit" class="btn btn-primary btn-lg px-5" id="analyzeButton">
+                            <i class="fas fa-search me-2"></i><span id="buttonText">{% trans "Analyze" %}</span>
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -163,33 +163,554 @@
     </div>
 </div>
 
-{% if user.is_authenticated %}
-<div class="row mt-5">
-    <div class="col-12">
-        <h3>{% trans "Quick Actions" %}</h3>
-        <div class="row g-3">
-            <div class="col-md-3">
-                <a href="{% url 'accounts:dashboard' %}" class="btn btn-outline-primary w-100">
-                    <i class="fas fa-tachometer-alt me-2"></i>{% trans "Dashboard" %}
-                </a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Symbol Search Styles */
+.selected-symbols {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+
+.symbol-tag {
+    display: inline-flex;
+    align-items: center;
+    background: linear-gradient(135deg, #007bff, #0056b3);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    box-shadow: 0 2px 4px rgba(0, 123, 255, 0.2);
+    transition: all 0.2s ease;
+}
+
+.symbol-tag:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 123, 255, 0.3);
+}
+
+.symbol-text {
+    margin-right: 6px;
+}
+
+.symbol-remove {
+    background: none;
+    border: none;
+    color: white;
+    padding: 2px 4px;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+}
+
+.symbol-remove:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.symbol-search-input {
+    border-radius: 0.375rem;
+    border: 1px solid #dee2e6;
+    padding-left: 12px;
+    padding-right: 40px;
+}
+
+.symbol-search-input:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.search-loading {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #6c757d;
+    z-index: 10;
+}
+
+.search-results {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    background: white;
+}
+
+.search-results-content {
+    padding: 0;
+}
+
+.search-result-item {
+    padding: 12px 16px;
+    border-bottom: 1px solid #f8f9fa;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.search-result-item:hover {
+    background-color: #f8f9fa;
+}
+
+.search-result-item:last-child {
+    border-bottom: none;
+}
+
+.search-result-symbol {
+    font-weight: 600;
+    color: #007bff;
+    margin-bottom: 2px;
+}
+
+.search-result-name {
+    font-size: 0.875rem;
+    color: #6c757d;
+    margin-bottom: 2px;
+}
+
+.search-result-exchange {
+    font-size: 0.75rem;
+    color: #adb5bd;
+}
+
+.search-filters {
+    padding: 8px 12px;
+    border-bottom: 1px solid #f8f9fa;
+    background-color: #f8f9fa;
+}
+
+.filter-buttons {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.filter-btn {
+    padding: 4px 8px;
+    font-size: 0.75rem;
+    border: 1px solid #dee2e6;
+    background: white;
+    color: #6c757d;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.filter-btn:hover,
+.filter-btn.active {
+    background-color: #007bff;
+    color: white;
+    border-color: #007bff;
+}
+
+/* Animations */
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.symbol-tag {
+    animation: slideIn 0.3s ease;
+}
+
+/* Focus states */
+.symbol-search-input:focus + .search-loading {
+    color: #007bff;
+}
+
+/* Loading state */
+.search-loading.show {
+    display: block !important;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .search-results {
+        max-height: 300px;
+    }
+    
+    .search-result-item {
+        padding: 10px 12px;
+    }
+    
+    .filter-buttons {
+        justify-content: center;
+    }
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Symbol Search and Selection Functionality
+class MainSymbolSearch {
+    constructor() {
+        this.searchInput = document.getElementById('symbolSearchInput');
+        this.searchResults = document.getElementById('searchResults');
+        this.searchResultsContent = document.getElementById('searchResultsContent');
+        this.searchLoading = document.getElementById('searchLoading');
+        this.searchFilters = document.getElementById('searchFilters');
+        this.selectedSymbols = document.getElementById('selectedSymbols');
+        this.symbolsInput = document.getElementById('symbolsInput');
+        this.analyzeButton = document.getElementById('analyzeButton');
+        this.buttonText = document.getElementById('buttonText');
+        this.mainSearchForm = document.getElementById('mainSearchForm');
+        
+        this.selectedSymbolsList = new Set();
+        this.searchTimeout = null;
+        this.currentSearchQuery = '';
+        this.currentFilter = 'all';
+        this.allResults = [];
+        
+        this.init();
+    }
+    
+    init() {
+        // Initialize with existing symbols
+        const existingSymbols = this.symbolsInput.value;
+        if (existingSymbols) {
+            const symbols = existingSymbols.split(',').filter(s => s.trim());
+            symbols.forEach(symbol => {
+                this.selectedSymbolsList.add(symbol.trim());
+                this.displaySelectedSymbol(symbol.trim());
+            });
+        }
+        
+        // Event listeners
+        this.searchInput.addEventListener('input', (e) => {
+            this.handleSearch(e.target.value);
+        });
+        
+        this.searchInput.addEventListener('focus', () => {
+            if (this.allResults.length > 0) {
+                this.showResults();
+            }
+        });
+        
+        this.searchInput.addEventListener('blur', () => {
+            // Delay hiding to allow clicking on results
+            setTimeout(() => {
+                this.hideResults();
+            }, 200);
+        });
+        
+        // Form submission
+        this.mainSearchForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.handleFormSubmission();
+        });
+        
+        // Click outside to close dropdown
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#symbolDropdownContainer')) {
+                this.hideResults();
+            }
+        });
+        
+        this.updateAnalyzeButton();
+    }
+    
+    handleSearch(query) {
+        this.currentSearchQuery = query.trim();
+        
+        if (this.currentSearchRequest) {
+            this.currentSearchRequest.abort();
+            this.currentSearchRequest = null;
+        }
+        
+        if (this.searchTimeout) {
+            clearTimeout(this.searchTimeout);
+        }
+        
+        if (this.currentSearchQuery.length < 2) {
+            this.showPlaceholder();
+            this.showResults();
+            this.allResults = [];
+            return;
+        }
+        
+        this.showLoading();
+        
+        this.searchTimeout = setTimeout(() => {
+            this.performSearch(this.currentSearchQuery);
+        }, 300);
+    }
+    
+    async performSearch(query) {
+        const abortController = new AbortController();
+        this.currentSearchRequest = abortController;
+        
+        try {
+            const response = await fetch(`/api/v1/search/?q=${encodeURIComponent(query)}&limit=20`, {
+                signal: abortController.signal
+            });
+            
+            if (this.currentSearchRequest !== abortController) {
+                return;
+            }
+            
+            const data = await response.json();
+            
+            if (this.currentSearchQuery !== query) {
+                return;
+            }
+            
+            this.hideLoading();
+            
+            if (data.results && data.results.length > 0) {
+                this.allResults = data.results;
+                await this.displayResults(data.results);
+                this.showResults();
+            } else {
+                this.allResults = [];
+                this.displayNoResults();
+                this.hideResults();
+            }
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                return;
+            }
+            console.error('Search error:', error);
+            this.hideLoading();
+            this.displayError();
+            this.hideResults();
+        } finally {
+            if (this.currentSearchRequest === abortController) {
+                this.currentSearchRequest = null;
+            }
+        }
+    }
+    
+    async displayResults(results) {
+        this.searchResultsContent.innerHTML = '';
+        
+        // Group results by exchange
+        const exchangeGroups = {};
+        results.forEach(result => {
+            const exchange = result.exchange || 'Other';
+            if (!exchangeGroups[exchange]) {
+                exchangeGroups[exchange] = [];
+            }
+            exchangeGroups[exchange].push(result);
+        });
+        
+        // Create exchange filter buttons
+        this.createExchangeFilters(Object.keys(exchangeGroups));
+        
+        // Display results
+        Object.entries(exchangeGroups).forEach(([exchange, exchangeResults]) => {
+            exchangeResults.forEach(result => {
+                const item = this.createResultItem(result);
+                this.searchResultsContent.appendChild(item);
+            });
+        });
+    }
+    
+    createExchangeFilters(exchanges) {
+        const filterButtons = document.getElementById('filterButtons');
+        filterButtons.innerHTML = '';
+        
+        // Add "All" button
+        const allButton = document.createElement('button');
+        allButton.type = 'button';
+        allButton.className = 'filter-btn active';
+        allButton.textContent = 'All';
+        allButton.dataset.exchange = 'all';
+        allButton.addEventListener('click', () => this.filterByExchange('all'));
+        filterButtons.appendChild(allButton);
+        
+        // Add exchange-specific buttons
+        exchanges.forEach(exchange => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'filter-btn';
+            button.textContent = exchange;
+            button.dataset.exchange = exchange;
+            button.addEventListener('click', () => this.filterByExchange(exchange));
+            filterButtons.appendChild(button);
+        });
+        
+        this.searchFilters.style.display = exchanges.length > 1 ? 'block' : 'none';
+    }
+    
+    filterByExchange(exchange) {
+        // Update active filter button
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        document.querySelector(`[data-exchange="${exchange}"]`).classList.add('active');
+        
+        this.currentFilter = exchange;
+        
+        // Filter and display results
+        const filteredResults = exchange === 'all' 
+            ? this.allResults 
+            : this.allResults.filter(result => (result.exchange || 'Other') === exchange);
+        
+        this.displayResults(filteredResults);
+    }
+    
+    createResultItem(result) {
+        const item = document.createElement('div');
+        item.className = 'search-result-item';
+        item.dataset.symbol = result.symbol;
+        item.dataset.exchange = result.exchange || 'Other';
+        
+        item.innerHTML = `
+            <div class="search-result-symbol">${result.symbol}</div>
+            <div class="search-result-name">${result.name || ''}</div>
+            <div class="search-result-exchange">${result.exchange || 'Other'}</div>
+        `;
+        
+        item.addEventListener('click', () => {
+            this.selectSymbol(result.symbol);
+        });
+        
+        return item;
+    }
+    
+    selectSymbol(symbol) {
+        if (!this.selectedSymbolsList.has(symbol)) {
+            this.selectedSymbolsList.add(symbol);
+            this.displaySelectedSymbol(symbol);
+            this.updateSymbolsInput();
+            this.updateAnalyzeButton();
+        }
+        
+        this.searchInput.value = '';
+        this.hideResults();
+        this.searchInput.focus();
+    }
+    
+    displaySelectedSymbol(symbol) {
+        const symbolTag = document.createElement('span');
+        symbolTag.className = 'symbol-tag';
+        symbolTag.dataset.symbol = symbol;
+        
+        symbolTag.innerHTML = `
+            <span class="symbol-text">${symbol}</span>
+            <button type="button" class="symbol-remove" onclick="removeSymbol('${symbol}')">
+                <i class="fas fa-times"></i>
+            </button>
+        `;
+        
+        this.selectedSymbols.appendChild(symbolTag);
+    }
+    
+    updateSymbolsInput() {
+        this.symbolsInput.value = Array.from(this.selectedSymbolsList).join(',');
+    }
+    
+    updateAnalyzeButton() {
+        const count = this.selectedSymbolsList.size;
+        if (count === 0) {
+            this.buttonText.textContent = '{% trans "Analyze" %}';
+        } else if (count === 1) {
+            this.buttonText.textContent = '{% trans "Analyze" %} (1)';
+        } else {
+            this.buttonText.textContent = `{% trans "Analyze" %} (${count})`;
+        }
+    }
+    
+    handleFormSubmission() {
+        const symbols = Array.from(this.selectedSymbolsList);
+        
+        if (symbols.length === 0) {
+            return;
+        }
+        
+        if (symbols.length === 1) {
+            // Redirect to info page for single symbol
+            window.location.href = `/markets/info/${symbols[0]}/`;
+        } else {
+            // Redirect to compare page for multiple symbols
+            window.location.href = `/markets/compare/${symbols.join(',')}/`;
+        }
+    }
+    
+    showLoading() {
+        this.searchLoading.classList.remove('d-none');
+        this.searchLoading.classList.add('show');
+    }
+    
+    hideLoading() {
+        this.searchLoading.classList.add('d-none');
+        this.searchLoading.classList.remove('show');
+    }
+    
+    showResults() {
+        this.searchResults.style.display = 'block';
+    }
+    
+    hideResults() {
+        this.searchResults.style.display = 'none';
+    }
+    
+    showPlaceholder() {
+        this.searchResultsContent.innerHTML = `
+            <div class="search-result-item text-center text-muted py-3">
+                <i class="fas fa-search me-2"></i>
+                {% trans "Start typing to search for assets..." %}
             </div>
-            <div class="col-md-3">
-                <a href="{% url 'activity:history' %}" class="btn btn-outline-secondary w-100">
-                    <i class="fas fa-history me-2"></i>{% trans "View History" %}
-                </a>
+        `;
+    }
+    
+    displayNoResults() {
+        this.searchResultsContent.innerHTML = `
+            <div class="search-result-item text-center text-muted py-3">
+                <i class="fas fa-exclamation-circle me-2"></i>
+                {% trans "No results found" %}
             </div>
-            <div class="col-md-3">
-                <a href="{% url 'activity:saved' %}" class="btn btn-outline-info w-100">
-                    <i class="fas fa-bookmark me-2"></i>{% trans "Saved Sets" %}
-                </a>
+        `;
+    }
+    
+    displayError() {
+        this.searchResultsContent.innerHTML = `
+            <div class="search-result-item text-center text-danger py-3">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                {% trans "Error loading results" %}
             </div>
-            <div class="col-md-3">
-                <a href="{% url 'accounts:profile' %}" class="btn btn-outline-success w-100">
-                    <i class="fas fa-user-cog me-2"></i>{% trans "Profile" %}
-                </a>
-            </div>
-        </div>
-    </div>
-</div>
-{% endif %}
+        `;
+    }
+}
+
+// Global function for removing symbols
+function removeSymbol(symbol) {
+    const symbolTag = document.querySelector(`[data-symbol="${symbol}"]`);
+    if (symbolTag) {
+        symbolTag.remove();
+    }
+    
+    if (window.mainSymbolSearch) {
+        window.mainSymbolSearch.selectedSymbolsList.delete(symbol);
+        window.mainSymbolSearch.updateSymbolsInput();
+        window.mainSymbolSearch.updateAnalyzeButton();
+    }
+}
+
+// Initialize when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    window.mainSymbolSearch = new MainSymbolSearch();
+});
+</script>
 {% endblock %}

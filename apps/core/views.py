@@ -19,6 +19,12 @@ logger = logging.getLogger(__name__)
 
 def home(request):
     """Home page view."""
+    # Get symbols from query parameters (for pre-populating the search form)
+    symbols = []
+    symbols_param = request.GET.get('symbols', '')
+    if symbols_param:
+        symbols = [s.strip() for s in symbols_param.split(',') if s.strip()]
+    
     # Get actively trading list
     actively_trading = []
     try:
@@ -32,6 +38,7 @@ def home(request):
         'title': _('shans.ai - Financial Analysis Platform'),
         'description': _('Professional financial analysis, portfolio optimization, and market insights.'),
         'actively_trading': actively_trading,
+        'symbols': symbols,
     }
     return render(request, 'core/home.html', context)
 
