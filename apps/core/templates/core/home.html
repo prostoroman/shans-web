@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% load i18n %}
 {% load markets_extras %}
+{% load core_extras %}
 
 {% block title %}{% trans "Home" %} - shans.ai{% endblock %}
 
@@ -80,13 +81,26 @@
     </div>
 </div>
 
-<!-- Actively Trading List Section -->
+<!-- Most Searched Stocks List Section -->
 <div class="row mt-5">
     <div class="col-12">
-        <h3 class="mb-4">{% trans "Actively Trading" %}</h3>
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h3>{% trans "Most Searched Stocks" %}</h3>
+            <div class="d-flex gap-2">
+                <select class="form-select form-select-sm" id="marketCapFilter" style="width: auto;">
+                    <option value="0">{% trans "All Market Caps" %}</option>
+                    <option value="1000000000">{% trans "Large Cap (>$1B)" %}</option>
+                    <option value="10000000000">{% trans "Mega Cap (>$10B)" %}</option>
+                    <option value="100000000000">{% trans "Ultra Cap (>$100B)" %}</option>
+                </select>
+                <button class="btn btn-outline-primary btn-sm" onclick="applyMarketCapFilter()">
+                    <i class="fas fa-filter me-1"></i>{% trans "Filter" %}
+                </button>
+            </div>
+        </div>
         <div class="card">
             <div class="card-body">
-                {% if actively_trading %}
+                {% if most_searched_stocks %}
                     <div class="table-responsive">
                         <table class="table table-hover">
                             <thead>
@@ -95,48 +109,48 @@
                                     <th>{% trans "Name" %}</th>
                                     <th>{% trans "Price" %}</th>
                                     <th>{% trans "Change" %}</th>
-                                    <th>{% trans "Volume" %}</th>
                                     <th>{% trans "Market Cap" %}</th>
+                                    <th>{% trans "Exchange" %}</th>
+                                    <th>{% trans "Type" %}</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for item in actively_trading %}
+                                {% for item in most_searched_stocks %}
                                 <tr>
                                     <td>
                                         <a href="{% url 'markets:info_symbol' item.symbol %}" class="text-decoration-none fw-bold">
                                             {{ item.symbol }}
                                         </a>
                                     </td>
-                                    <td>{{ item.name|default:"-" }}</td>
+                                    <td>
+                                        <div class="text-truncate" style="max-width: 200px;" title="{{ item.name }}">
+                                            {{ item.name|default:"-" }}
+                                        </div>
+                                    </td>
                                     <td>
                                         {% if item.price %}
-                                            ${{ item.price|floatformat:2 }}
+                                            {{ item.price|format_currency:item.currency }}
                                         {% else %}
                                             -
                                         {% endif %}
                                     </td>
                                     <td>
-                                        {% if item.change %}
-                                            <span class="{% if item.change >= 0 %}text-success{% else %}text-danger{% endif %}">
-                                                {% if item.change >= 0 %}+{% endif %}{{ item.change|floatformat:2 }}%
-                                            </span>
-                                        {% else %}
-                                            -
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if item.volume %}
-                                            {{ item.volume|floatformat:0 }}
+                                        {% if item.changePercentage is not None %}
+                                            {{ item.changePercentage|format_percentage }}
                                         {% else %}
                                             -
                                         {% endif %}
                                     </td>
                                     <td>
                                         {% if item.marketCap %}
-                                            ${{ item.marketCap|floatformat:0 }}
+                                            {{ item.marketCap|format_market_cap }}
                                         {% else %}
                                             -
                                         {% endif %}
+                                    </td>
+                                    <td>{{ item.exchangeShortName|default:item.exchange|default:"-" }}</td>
+                                    <td>
+                                        <span class="badge bg-primary">{{ item.type|default:"stock" }}</span>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -151,7 +165,7 @@
                 {% else %}
                     <div class="text-center py-4">
                         <p class="text-muted mb-0">
-                            {% trans "Unable to load actively trading data at this time." %}
+                            {% trans "Unable to load most searched stocks data at this time." %}
                         </p>
                         <small class="text-muted">
                             {% trans "Please try again later or check your API configuration." %}
@@ -712,5 +726,16 @@ function removeSymbol(symbol) {
 document.addEventListener('DOMContentLoaded', function() {
     window.mainSymbolSearch = new MainSymbolSearch();
 });
+
+// Market Cap Filter Function
+function applyMarketCapFilter() {
+    const filterSelect = document.getElementById('marketCapFilter');
+    const minMarketCap = filterSelect.value;
+    
+    // Reload the page with the market cap filter parameter
+    const url = new URL(window.location);
+    url.searchParams.set('min_market_cap', minMarketCap);
+    window.location.href = url.toString();
+}
 </script>
 {% endblock %}

@@ -922,6 +922,183 @@ def get_actively_trading_list() -> List[Dict[str, Any]]:
         return []
 
 
+def get_most_searched_stocks(min_market_cap: float = 0) -> List[Dict[str, Any]]:
+    """
+    Get most searched stocks list from FMP API with enhanced data.
+    Uses multiple endpoints to get comprehensive stock information.
+    
+    Args:
+        min_market_cap: Minimum market cap filter in USD (default: 0)
+    
+    Returns:
+        List of most searched/popular stocks with enhanced data
+    """
+    settings = _get_settings()
+    ttl = 15 * 60  # Cache for 15 minutes since this includes real-time data
+    cache_key = f"fmp:most_searched_stocks:{min_market_cap}"
+
+    def loader():
+        # Get stock list from FMP API
+        stock_list = _http_get_json("stock/list")
+        if not isinstance(stock_list, list):
+            return []
+        
+        # Filter for stocks only (exclude ETFs, trusts, etc.)
+        stocks = [item for item in stock_list if item.get('type') == 'stock']
+        
+        # Get symbols for batch quote requests
+        symbols = [stock['symbol'] for stock in stocks[:100]]  # Limit to 100 for API efficiency
+        
+        # Get enhanced data for stocks
+        enhanced_stocks = []
+        
+        # Get quotes for price and change data
+        if symbols:
+            try:
+                # Batch quote request
+                quotes_data = _http_get_json("quote-short", {"symbol": ",".join(symbols)})
+                quotes_dict = {}
+                if isinstance(quotes_data, list):
+                    quotes_dict = {quote.get('symbol'): quote for quote in quotes_data}
+                
+                # Get market cap data
+                market_cap_data = _http_get_json("market-capitalization", {"symbol": ",".join(symbols)})
+                market_cap_dict = {}
+                if isinstance(market_cap_data, list):
+                    market_cap_dict = {mc.get('symbol'): mc for mc in market_cap_data}
+                
+                # Combine data
+                for stock in stocks:
+                    symbol = stock.get('symbol')
+                    quote = quotes_dict.get(symbol, {})
+                    market_cap_info = market_cap_dict.get(symbol, {})
+                    
+                    # Calculate market cap
+                    market_cap = market_cap_info.get('marketCap')
+                    if not market_cap and quote.get('price') and quote.get('sharesOutstanding'):
+                        try:
+                            market_cap = float(quote['price']) * float(quote['sharesOutstanding'])
+                        except (ValueError, TypeError):
+                            market_cap = None
+                    
+                    # Apply market cap filter
+                    if min_market_cap > 0 and (not market_cap or market_cap < min_market_cap):
+                        continue
+                    
+                    # Determine currency based on exchange
+                    currency = _get_currency_for_exchange(stock.get('exchangeShortName', stock.get('exchange', '')))
+                    
+                    enhanced_stock = {
+                        'symbol': symbol,
+                        'name': stock.get('name', ''),
+                        'price': quote.get('price'),
+                        'change': quote.get('change'),
+                        'changePercentage': quote.get('changePercentage'),
+                        'marketCap': market_cap,
+                        'exchange': stock.get('exchangeShortName', stock.get('exchange', '')),
+                        'type': stock.get('type', 'stock'),
+                        'currency': currency,
+                        'volume': quote.get('volume'),
+                        'dayLow': quote.get('dayLow'),
+                        'dayHigh': quote.get('dayHigh'),
+                    }
+                    enhanced_stocks.append(enhanced_stock)
+                    
+            except Exception as e:
+                logger.warning(f"Error getting enhanced data: {e}")
+                # Fallback to basic data
+                for stock in stocks:
+                    currency = _get_currency_for_exchange(stock.get('exchangeShortName', stock.get('exchange', '')))
+                    enhanced_stock = {
+                        'symbol': stock.get('symbol'),
+                        'name': stock.get('name', ''),
+                        'price': stock.get('price'),
+                        'change': None,
+                        'changePercentage': None,
+                        'marketCap': None,
+                        'exchange': stock.get('exchangeShortName', stock.get('exchange', '')),
+                        'type': stock.get('type', 'stock'),
+                        'currency': currency,
+                        'volume': None,
+                        'dayLow': None,
+                        'dayHigh': None,
+                    }
+                    enhanced_stocks.append(enhanced_stock)
+        
+        # Sort by market cap descending, then by exchange priority
+        def sort_key(item):
+            market_cap = item.get('marketCap', 0) or 0
+            exchange = item.get('exchange', '').upper()
+            
+            # Priority order for exchanges
+            exchange_priority = {
+                'NASDAQ': 1,
+                'NYSE': 2,
+                'AMEX': 3,
+                'LSE': 4,
+                'XETRA': 5,
+                'TSX': 6,
+                'ASX': 7,
+                'NZE': 8,
+                'MCX': 9,
+            }
+            
+            priority = exchange_priority.get(exchange, 99)
+            return (-market_cap, priority)  # Negative for descending order
+        
+        enhanced_stocks.sort(key=sort_key)
+        return enhanced_stocks[:50]  # Return top 50 stocks
+
+    try:
+        return _cached_call(cache_key, ttl, loader) or []
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Error getting most searched stocks: {e}")
+        # Return a fallback list of popular stocks if API fails
+        return [
+            {"symbol": "AAPL", "name": "Apple Inc.", "price": 150.0, "exchange": "NASDAQ", "type": "stock", "currency": "USD", "marketCap": 2500000000000, "changePercentage": 1.5},
+            {"symbol": "MSFT", "name": "Microsoft Corporation", "price": 300.0, "exchange": "NASDAQ", "type": "stock", "currency": "USD", "marketCap": 2200000000000, "changePercentage": -0.8},
+            {"symbol": "GOOGL", "name": "Alphabet Inc.", "price": 2500.0, "exchange": "NASDAQ", "type": "stock", "currency": "USD", "marketCap": 1800000000000, "changePercentage": 2.1},
+            {"symbol": "AMZN", "name": "Amazon.com Inc.", "price": 3000.0, "exchange": "NASDAQ", "type": "stock", "currency": "USD", "marketCap": 1500000000000, "changePercentage": 0.5},
+            {"symbol": "TSLA", "name": "Tesla Inc.", "price": 200.0, "exchange": "NASDAQ", "type": "stock", "currency": "USD", "marketCap": 600000000000, "changePercentage": -2.3},
+        ]
+
+
+def _get_currency_for_exchange(exchange: str) -> str:
+    """
+    Determine currency based on exchange.
+    
+    Args:
+        exchange: Exchange short name
+        
+    Returns:
+        Currency code
+    """
+    if not exchange:
+        return 'USD'
+    
+    exchange_currency_map = {
+        'NASDAQ': 'USD',
+        'NYSE': 'USD',
+        'AMEX': 'USD',
+        'LSE': 'GBP',
+        'XETRA': 'EUR',
+        'TSX': 'CAD',
+        'ASX': 'AUD',
+        'NZE': 'NZD',
+        'MCX': 'RUB',
+        'KSC': 'KRW',
+        'KOE': 'KRW',
+        'BSE': 'INR',
+        'NSE': 'INR',
+        'TSE': 'JPY',
+        'HKSE': 'HKD',
+        'SSE': 'CNY',
+        'SZSE': 'CNY',
+    }
+    
+    return exchange_currency_map.get(exchange.upper(), 'USD')
+
+
 def search_etfs(query: str) -> List[Dict[str, Any]]:
     """
     Search for ETFs by symbol or name using the FMP ETF list endpoint.

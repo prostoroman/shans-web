@@ -12,7 +12,7 @@ from django.urls import reverse
 from django.conf import settings
 import logging
 
-from apps.data.fmp_client import get_actively_trading_list
+from apps.data.fmp_client import get_most_searched_stocks
 
 logger = logging.getLogger(__name__)
 
@@ -25,19 +25,25 @@ def home(request):
     if symbols_param:
         symbols = [s.strip() for s in symbols_param.split(',') if s.strip()]
     
-    # Get actively trading list
-    actively_trading = []
+    # Get most searched stocks list with optional market cap filter
+    min_market_cap = request.GET.get('min_market_cap', 0)
     try:
-        actively_trading = get_actively_trading_list()
+        min_market_cap = float(min_market_cap) if min_market_cap else 0
+    except (ValueError, TypeError):
+        min_market_cap = 0
+    
+    most_searched_stocks = []
+    try:
+        most_searched_stocks = get_most_searched_stocks(min_market_cap=min_market_cap)
         # Limit to first 20 items for better performance
-        actively_trading = actively_trading[:20]
+        most_searched_stocks = most_searched_stocks[:20]
     except Exception as e:
-        logger.error(f"Error loading actively trading list: {e}")
+        logger.error(f"Error loading most searched stocks list: {e}")
     
     context = {
         'title': _('shans.ai - Financial Analysis Platform'),
         'description': _('Professional financial analysis, portfolio optimization, and market insights.'),
-        'actively_trading': actively_trading,
+        'most_searched_stocks': most_searched_stocks,
         'symbols': symbols,
     }
     return render(request, 'core/home.html', context)
