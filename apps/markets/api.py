@@ -171,7 +171,7 @@ class CompareAPIView(APIView):
         symbols = serializers.ListField(child=serializers.CharField(max_length=12), min_length=2, max_length=5)
         base_currency = serializers.CharField(max_length=3, default='USD')
         include_dividends = serializers.BooleanField(default=True)
-        period = serializers.CharField(max_length=10, default='1Y')
+        period = serializers.CharField(max_length=10, default='YTD')
         normalize_mode = serializers.CharField(max_length=20, default='index100')
 
     def post(self, request):

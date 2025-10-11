@@ -176,17 +176,47 @@
                         <h5 class="mb-0">
                             <i class="fas fa-chart-line me-2"></i>{% trans "Investment Performance Chart" %}
                         </h5>
-                        <!-- Mode Switch Toggle -->
-                        <div class="btn-group" role="group" aria-label="{% trans 'Comparison Mode' %}">
-                            <input type="radio" class="btn-check" name="chartMode" id="percentMode" value="percent_change" checked>
-                            <label class="btn btn-outline-primary btn-sm" for="percentMode">
-                                <i class="fas fa-percentage me-1"></i>{% trans "% Change" %}
-                            </label>
+                        <!-- Controls -->
+                        <div class="d-flex gap-2">
+                            <!-- Period Switch -->
+                            <div class="btn-group" role="group" aria-label="{% trans 'Chart Period' %}">
+                                <input type="radio" class="btn-check" name="chartPeriod" id="period1M" value="1M" {% if period == '1M' %}checked{% endif %}>
+                                <label class="btn btn-outline-secondary btn-sm" for="period1M">1M</label>
+                                
+                                <input type="radio" class="btn-check" name="chartPeriod" id="period3M" value="3M" {% if period == '3M' %}checked{% endif %}>
+                                <label class="btn btn-outline-secondary btn-sm" for="period3M">3M</label>
+                                
+                                <input type="radio" class="btn-check" name="chartPeriod" id="period6M" value="6M" {% if period == '6M' %}checked{% endif %}>
+                                <label class="btn btn-outline-secondary btn-sm" for="period6M">6M</label>
+                                
+                                <input type="radio" class="btn-check" name="chartPeriod" id="periodYTD" value="YTD" {% if period == 'YTD' %}checked{% endif %}>
+                                <label class="btn btn-outline-secondary btn-sm" for="periodYTD">YTD</label>
+                                
+                                <input type="radio" class="btn-check" name="chartPeriod" id="period1Y" value="1Y" {% if period == '1Y' %}checked{% endif %}>
+                                <label class="btn btn-outline-secondary btn-sm" for="period1Y">1Y</label>
+                                
+                                <input type="radio" class="btn-check" name="chartPeriod" id="period3Y" value="3Y" {% if period == '3Y' %}checked{% endif %}>
+                                <label class="btn btn-outline-secondary btn-sm" for="period3Y">3Y</label>
+                                
+                                <input type="radio" class="btn-check" name="chartPeriod" id="period5Y" value="5Y" {% if period == '5Y' %}checked{% endif %}>
+                                <label class="btn btn-outline-secondary btn-sm" for="period5Y">5Y</label>
+                                
+                                <input type="radio" class="btn-check" name="chartPeriod" id="period10Y" value="10Y" {% if period == '10Y' %}checked{% endif %}>
+                                <label class="btn btn-outline-secondary btn-sm" for="period10Y">10Y</label>
+                            </div>
                             
-                            <input type="radio" class="btn-check" name="chartMode" id="indexMode" value="index100">
-                            <label class="btn btn-outline-primary btn-sm" for="indexMode">
-                                <i class="fas fa-chart-line me-1"></i>{% trans "Index" %}
-                            </label>
+                            <!-- Mode Switch Toggle -->
+                            <div class="btn-group" role="group" aria-label="{% trans 'Comparison Mode' %}">
+                                <input type="radio" class="btn-check" name="chartMode" id="percentMode" value="percent_change" checked>
+                                <label class="btn btn-outline-primary btn-sm" for="percentMode">
+                                    <i class="fas fa-percentage me-1"></i>{% trans "% Change" %}
+                                </label>
+                                
+                                <input type="radio" class="btn-check" name="chartMode" id="indexMode" value="index100">
+                                <label class="btn btn-outline-primary btn-sm" for="indexMode">
+                                    <i class="fas fa-chart-line me-1"></i>{% trans "Index" %}
+                                </label>
+                            </div>
                         </div>
                     </div>
                     <div class="card-body">
@@ -305,7 +335,7 @@
                                         {% endfor %}
                                     </tr>
                                     <tr>
-                                        <td><strong>{% trans "Annualized Return" %}</strong></td>
+                                        <td><strong>{% trans "CAGR" %}</strong></td>
                                         {% for symbol in symbols %}
                                             {% with asset_metrics=comparison_result.metrics|lookup:symbol %}
                                                 {% if asset_metrics.annualized_return %}
@@ -2190,4 +2220,31 @@ function saveComparison() {
     display: block !important;
 }
 </style>
+
+<script>
+// Period Switch Functionality for Comparison Chart
+document.addEventListener('DOMContentLoaded', function() {
+    const periodButtons = document.querySelectorAll('input[name="chartPeriod"]');
+    
+    periodButtons.forEach(function(button) {
+        button.addEventListener('change', function() {
+            if (this.checked) {
+                const selectedPeriod = this.value;
+                const currentUrl = new URL(window.location);
+                currentUrl.searchParams.set('period', selectedPeriod);
+                
+                // Add loading state to chart
+                const chartContainer = document.getElementById('comparisonChart');
+                if (chartContainer) {
+                    const parent = chartContainer.parentElement;
+                    parent.innerHTML = '<div class="d-flex justify-content-center align-items-center" style="height: 400px;"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div></div>';
+                }
+                
+                // Reload page with new period
+                window.location.href = currentUrl.toString();
+            }
+        });
+    });
+});
+</script>
 {% endblock %}

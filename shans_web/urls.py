@@ -8,6 +8,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.views.generic import RedirectView
 from django.http import HttpResponse, FileResponse
+from apps.markets import views
 import os
 
 def favicon_view(request):
@@ -28,6 +29,10 @@ urlpatterns = [
     
     # Market analysis
     path('markets/', include('apps.markets.urls')),
+    
+    # Direct compare routes
+    path('compare/', views.compare, name='compare'),
+    path('compare/<str:symbols>/', views.compare, name='compare_symbols'),
     
     # Portfolio analysis
     path('portfolio/', include('apps.portfolio.urls')),

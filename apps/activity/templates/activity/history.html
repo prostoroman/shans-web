@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load i18n %}
+{% load markets_extras %}
 
 {% block title %}{% trans "Viewing History" %} - shans.ai{% endblock %}
 
@@ -91,11 +92,11 @@
                                         </span>
                                         <div class="btn-group btn-group-sm">
                                             {% if event.view_type == 'info' %}
-                                                <a href="{% url 'markets:info_symbol' symbol=event.symbol %}" class="btn btn-outline-primary btn-sm">
+                                                <a href="{% asset_info_url event.symbol %}" class="btn btn-outline-primary btn-sm">
                                                     <i class="fas fa-eye"></i>
                                                 </a>
                                             {% elif event.view_type == 'compare' %}
-                                                <a href="{% url 'markets:compare' %}?symbols={{ event.symbol }}" class="btn btn-outline-success btn-sm">
+                                                <a href="{% url 'compare_symbols' symbols=event.symbol %}" class="btn btn-outline-success btn-sm">
                                                     <i class="fas fa-balance-scale"></i>
                                                 </a>
                                             {% elif event.view_type == 'portfolio' %}
@@ -158,7 +159,7 @@
                         <p class="text-muted">
                             {% trans "Start exploring stocks and your viewing history will appear here." %}
                         </p>
-                        <a href="{% url 'markets:info' %}" class="btn btn-primary">
+                        <a href="{% url 'core:home' %}" class="btn btn-primary">
                             <i class="fas fa-chart-line me-2"></i>{% trans "Explore Stocks" %}
                         </a>
                     </div>

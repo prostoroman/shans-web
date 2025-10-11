@@ -85,8 +85,8 @@ def sitemap_xml(request):
             return [
                 'core:home',
                 'portfolio:form',
-                'markets:info',
-                'markets:compare',
+                'core:home',
+                'compare',
             ]
         
         def location(self, item):

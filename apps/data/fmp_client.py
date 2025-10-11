@@ -214,7 +214,7 @@ def get_price_series(symbol: str, start_date: Optional[str] = None, end_date: Op
     """
     settings = _get_settings()
     ttl = settings.CACHE_TTL_EOD
-    cache_key = f"fmp:hist:{symbol.upper()}:{start_date or ''}:{end_date or ''}:dividend_adjusted_{include_dividends}"
+    cache_key = f"fmp:hist:{symbol.upper()}:{start_date or ''}:{end_date or ''}:dividend_adjusted_{include_dividends}:light_v2"
 
     def loader():
         if include_dividends:
@@ -235,27 +235,47 @@ def get_price_series(symbol: str, start_date: Optional[str] = None, end_date: Op
                 return data
             return []
         else:
-            # Use regular historical price endpoint
-            client = _get_fmp()
-            if client is not None and hasattr(client, "historical_price_full"):
-                data = client.historical_price_full(symbol, _from=start_date, to=end_date)  # type: ignore[call-arg]
-                # client may return dict with 'historical'
-                if isinstance(data, dict) and "historical" in data:
-                    return data.get("historical", [])
-                if isinstance(data, list) and data and isinstance(data[0], dict) and "historical" in data[0]:
-                    return data[0]["historical"]
-                return data or []
+            # Use the stable historical-price-eod/light endpoint for better historical data
             params: Dict[str, Any] = {}
             if start_date:
                 params["from"] = start_date
             if end_date:
                 params["to"] = end_date
-            data = _http_get_json(f"historical-price-full/{symbol}", params)
-            if isinstance(data, list) and data and "historical" in data[0]:
-                return data[0]["historical"]
-            if isinstance(data, dict) and "historical" in data:
-                return data.get("historical", [])
-            return []
+            
+            try:
+                data = _http_get_json("historical-price-eod/light", {
+                    "symbol": symbol,
+                    **params
+                }, use_stable=True)
+                
+                if isinstance(data, list):
+                    return data
+                if isinstance(data, dict) and "historical" in data:
+                    return data.get("historical", [])
+                return []
+            except Exception as e:
+                logger.warning(f"Error fetching light endpoint for {symbol}: {e}")
+                # Fallback to regular historical price endpoint
+                client = _get_fmp()
+                if client is not None and hasattr(client, "historical_price_full"):
+                    data = client.historical_price_full(symbol, _from=start_date, to=end_date)  # type: ignore[call-arg]
+                    # client may return dict with 'historical'
+                    if isinstance(data, dict) and "historical" in data:
+                        return data.get("historical", [])
+                    if isinstance(data, list) and data and isinstance(data[0], dict) and "historical" in data[0]:
+                        return data[0]["historical"]
+                    return data or []
+                params: Dict[str, Any] = {}
+                if start_date:
+                    params["from"] = start_date
+                if end_date:
+                    params["to"] = end_date
+                data = _http_get_json(f"historical-price-full/{symbol}", params)
+                if isinstance(data, list) and data and "historical" in data[0]:
+                    return data[0]["historical"]
+                if isinstance(data, dict) and "historical" in data:
+                    return data.get("historical", [])
+                return []
 
     try:
         result = _cached_call(cache_key, ttl, loader)
@@ -1068,6 +1088,86 @@ def index_list() -> List[Dict[str, Any]]:
         return []
 
 
+def get_index_price_history(symbol: str, days: int = 365) -> List[Dict[str, Any]]:
+    """
+    Get historical price data for indexes using the stable light endpoint.
+    Uses endpoint: stable/historical-price-eod/light?symbol={symbol}&from=YYYY-MM-DD&to=YYYY-MM-DD
+    """
+    settings = _get_settings()
+    ttl = settings.CACHE_TTL_EOD
+    cache_key = f"fmp:index_history:{symbol.upper()}:{days}"
+
+    def loader():
+        from datetime import date, timedelta
+        end_date = date.today()
+        start_date = end_date - timedelta(days=days)
+        try:
+            data = _http_get_json(
+                "historical-price-eod/light",
+                {
+                    "symbol": symbol,
+                    "from": start_date.isoformat(),
+                    "to": end_date.isoformat(),
+                },
+                use_stable=True,
+            )
+            if isinstance(data, list):
+                return data
+            if isinstance(data, dict) and "historical" in data:
+                return data["historical"]
+            return []
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Error fetching index history for {symbol}: {e}")
+            return []
+
+    try:
+        return _cached_call(cache_key, ttl, loader) or []
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Error getting index price history for {symbol}: {e}")
+        return []
+
+
+def get_index_quote(symbol: str) -> Optional[Dict[str, Any]]:
+    """
+    Get index quote; fallback to latest point from historical light endpoint.
+    """
+    settings = _get_settings()
+    ttl = settings.CACHE_TTL_INTRADAY
+    cache_key = f"fmp:index_quote:{symbol.upper()}"
+
+    def loader():
+        # Try generic quote endpoint first
+        data = _http_get_json("quote", {"symbol": symbol})
+        if isinstance(data, list) and data:
+            return data[0]
+        if isinstance(data, dict) and data:
+            return data
+        # Fallback to history
+        hist = get_index_price_history(symbol, days=1)
+        if hist:
+            latest = hist[0]
+            return {
+                "symbol": symbol,
+                "name": latest.get("name", symbol),
+                "price": latest.get("close") or latest.get("adjClose") or latest.get("price"),
+                "change": latest.get("change"),
+                "changePercentage": latest.get("changePercentage"),
+                "dayLow": latest.get("dayLow"),
+                "dayHigh": latest.get("dayHigh"),
+                "volume": latest.get("volume"),
+                "exchange": "INDEX",
+                "currency": latest.get("currency") or "USD",
+                "type": "index",
+            }
+        return None
+
+    try:
+        return _cached_call(cache_key, ttl, loader)
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Error getting index quote for {symbol}: {e}")
+        return None
+
+
 def get_actively_trading_list() -> List[Dict[str, Any]]:
     """
     Get actively trading list from FMP stable endpoint.
@@ -1197,7 +1297,7 @@ def get_most_searched_stocks(min_market_cap: float = 0) -> List[Dict[str, Any]]:
         # Sort by market cap descending, then by exchange priority
         def sort_key(item):
             market_cap = item.get('marketCap', 0) or 0
-            exchange = item.get('exchange', '').upper()
+            exchange = (item.get('exchange') or '').upper()
             
             # Priority order for exchanges
             exchange_priority = {
@@ -1229,6 +1329,21 @@ def get_most_searched_stocks(min_market_cap: float = 0) -> List[Dict[str, Any]]:
             {"symbol": "GOOGL", "name": "Alphabet Inc.", "price": 2500.0, "exchange": "NASDAQ", "type": "stock", "currency": "USD", "marketCap": 1800000000000, "changePercentage": 2.1},
             {"symbol": "AMZN", "name": "Amazon.com Inc.", "price": 3000.0, "exchange": "NASDAQ", "type": "stock", "currency": "USD", "marketCap": 1500000000000, "changePercentage": 0.5},
             {"symbol": "TSLA", "name": "Tesla Inc.", "price": 200.0, "exchange": "NASDAQ", "type": "stock", "currency": "USD", "marketCap": 600000000000, "changePercentage": -2.3},
+            {"symbol": "META", "name": "Meta Platforms Inc.", "price": 350.0, "exchange": "NASDAQ", "type": "stock", "currency": "USD", "marketCap": 850000000000, "changePercentage": 1.2},
+            {"symbol": "NVDA", "name": "NVIDIA Corporation", "price": 450.0, "exchange": "NASDAQ", "type": "stock", "currency": "USD", "marketCap": 1100000000000, "changePercentage": 3.5},
+            {"symbol": "BRK.A", "name": "Berkshire Hathaway Inc.", "price": 540000.0, "exchange": "NYSE", "type": "stock", "currency": "USD", "marketCap": 780000000000, "changePercentage": 0.3},
+            {"symbol": "BRK.B", "name": "Berkshire Hathaway Inc.", "price": 360.0, "exchange": "NYSE", "type": "stock", "currency": "USD", "marketCap": 780000000000, "changePercentage": 0.3},
+            {"symbol": "V", "name": "Visa Inc.", "price": 250.0, "exchange": "NYSE", "type": "stock", "currency": "USD", "marketCap": 520000000000, "changePercentage": -0.5},
+            {"symbol": "JPM", "name": "JPMorgan Chase & Co.", "price": 180.0, "exchange": "NYSE", "type": "stock", "currency": "USD", "marketCap": 530000000000, "changePercentage": 0.8},
+            {"symbol": "JNJ", "name": "Johnson & Johnson", "price": 160.0, "exchange": "NYSE", "type": "stock", "currency": "USD", "marketCap": 420000000000, "changePercentage": -0.2},
+            {"symbol": "WMT", "name": "Walmart Inc.", "price": 170.0, "exchange": "NYSE", "type": "stock", "currency": "USD", "marketCap": 550000000000, "changePercentage": 0.4},
+            {"symbol": "PG", "name": "Procter & Gamble Co.", "price": 155.0, "exchange": "NYSE", "type": "stock", "currency": "USD", "marketCap": 365000000000, "changePercentage": 0.1},
+            {"symbol": "UNH", "name": "UnitedHealth Group Inc.", "price": 520.0, "exchange": "NYSE", "type": "stock", "currency": "USD", "marketCap": 490000000000, "changePercentage": 1.8},
+            {"symbol": "HD", "name": "Home Depot Inc.", "price": 380.0, "exchange": "NYSE", "type": "stock", "currency": "USD", "marketCap": 380000000000, "changePercentage": -0.7},
+            {"symbol": "MA", "name": "Mastercard Inc.", "price": 420.0, "exchange": "NYSE", "type": "stock", "currency": "USD", "marketCap": 400000000000, "changePercentage": 0.9},
+            {"symbol": "BAC", "name": "Bank of America Corp.", "price": 35.0, "exchange": "NYSE", "type": "stock", "currency": "USD", "marketCap": 270000000000, "changePercentage": 1.1},
+            {"symbol": "ABBV", "name": "AbbVie Inc.", "price": 165.0, "exchange": "NYSE", "type": "stock", "currency": "USD", "marketCap": 290000000000, "changePercentage": -0.3},
+            {"symbol": "PFE", "name": "Pfizer Inc.", "price": 28.0, "exchange": "NYSE", "type": "stock", "currency": "USD", "marketCap": 160000000000, "changePercentage": 0.6},
         ]
 
 
@@ -1265,7 +1380,7 @@ def _get_currency_for_exchange(exchange: str) -> str:
         'SZSE': 'CNY',
     }
     
-    return exchange_currency_map.get(exchange.upper(), 'USD')
+    return exchange_currency_map.get(exchange.upper() if exchange else '', 'USD')
 
 
 def search_etfs(query: str) -> List[Dict[str, Any]]:

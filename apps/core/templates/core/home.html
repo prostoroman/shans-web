@@ -118,7 +118,7 @@
                                 {% for item in most_searched_stocks %}
                                 <tr>
                                     <td>
-                                        <a href="{% url 'markets:info_symbol' item.symbol %}" class="text-decoration-none fw-bold">
+                                        <a href="{% asset_info_url item.symbol %}" class="text-decoration-none fw-bold">
                                             {{ item.symbol }}
                                         </a>
                                     </td>
@@ -708,11 +708,25 @@ class MainSymbolSearch {
         }
         
         if (symbols.length === 1) {
-            // Redirect to info page for single symbol
-            window.location.href = `/markets/info/${symbols[0]}/`;
+            // Redirect to info page for single symbol using type-based URL
+            const symbol = symbols[0];
+            // Determine asset type and redirect accordingly
+            if (symbol.match(/^(GC|SI|CL|NG|HG|PL|PA).*USD$/)) {
+                window.location.href = `/markets/commodity/${symbol}/`;
+            } else if (symbol.match(/^(BTC|ETH|ADA|DOT|LINK|LTC|XRP).*USD$/)) {
+                window.location.href = `/markets/crypto/${symbol}/`;
+            } else if (symbol.match(/^[A-Z]{6}$/) && symbol.match(/USD$/)) {
+                window.location.href = `/markets/forex/${symbol}/`;
+            } else if (symbol.startsWith('^') || ['GSPC', 'NDX', 'DJI', 'RUT', 'VIX'].includes(symbol)) {
+                window.location.href = `/markets/index/${symbol}/`;
+            } else if (['SPY', 'QQQ', 'IWM', 'VTI', 'VEA', 'VWO', 'AGG', 'TLT', 'GLD', 'SLV'].includes(symbol)) {
+                window.location.href = `/markets/etf/${symbol}/`;
+            } else {
+                window.location.href = `/markets/stock/${symbol}/`;
+            }
         } else {
             // Redirect to compare page for multiple symbols
-            window.location.href = `/markets/compare/${symbols.join(',')}/`;
+            window.location.href = `/compare/${symbols.join(',')}/`;
         }
     }
     

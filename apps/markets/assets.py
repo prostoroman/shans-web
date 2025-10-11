@@ -18,6 +18,7 @@ from apps.data.fmp_client import (
     get_cryptocurrency_quote, get_cryptocurrency_price_history,
     get_forex_quote, get_forex_price_history
 )
+from apps.data.fmp_client import get_index_quote, get_index_price_history
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ class AssetType(Enum):
     COMMODITY = "commodity"
     CRYPTOCURRENCY = "cryptocurrency"
     FOREX = "forex"
+    INDEX = "index"
 
 
 class BaseAsset(ABC):
@@ -530,6 +532,42 @@ class ETFAsset(StockAsset):
         return AssetType.ETF
 
 
+class IndexAsset(BaseAsset):
+    """Index asset implementation (e.g., ^GSPC, ^NDX)."""
+    
+    @property
+    def asset_type(self) -> AssetType:
+        return AssetType.INDEX
+    
+    @property
+    def name(self) -> str:
+        quote = self.get_quote()
+        return (quote.get('name') if quote and quote.get('name') else self.symbol)
+    
+    @property
+    def currency(self) -> str:
+        quote = self.get_quote()
+        return (quote.get('currency') if quote and quote.get('currency') else 'USD')
+    
+    @property
+    def exchange(self) -> str:
+        quote = self.get_quote()
+        return (quote.get('exchange') if quote and quote.get('exchange') else 'INDEX')
+    
+    def get_quote(self) -> Optional[Dict[str, Any]]:
+        if self._quote_data is None:
+            self._quote_data = get_index_quote(self.symbol)
+        return self._quote_data
+    
+    def get_price_history(self, days: int = 365, include_dividends: bool = False) -> List[Dict[str, Any]]:
+        # Indexes do not have dividend-adjusted histories in our usage; ignore include_dividends
+        return get_index_price_history(self.symbol, days) or []
+    
+    def get_dividend_history(self) -> List[Dict[str, Any]]:
+        # Indexes don't pay dividends
+        return []
+
+
 class CommodityAsset(BaseAsset):
     """Commodity asset implementation."""
     
@@ -713,6 +751,19 @@ class AssetFactory:
                 return ForexAsset(symbol_upper)
         
         # Auto-detect asset type based on symbol patterns
+        # Indices: FMP commonly uses caret-prefixed symbols (e.g., ^GSPC, ^NDX)
+        if symbol_upper.startswith('^'):
+            return IndexAsset(symbol_upper)
+        # Also handle some well-known index tickers without caret
+        known_index_aliases = {
+            'GSPC', 'NDX', 'DJI', 'RUT', 'VIX',
+            'IMOEX', 'IMOEX.ME', 'RTSI', 'RTSI.ME'
+        }
+        if symbol_upper in known_index_aliases:
+            # Use symbol as-is if it already has an exchange suffix; otherwise prefix caret
+            normalized = symbol_upper if symbol_upper.endswith('.ME') else ('^' + symbol_upper)
+            return IndexAsset(normalized)
+
         if len(symbol_upper) == 6:
             # Check if it's a forex pair (6 characters: EURUSD, GBPUSD, RUBUSD, etc.)
             forex_base_currencies = ['EUR', 'GBP', 'JPY', 'CHF', 'AUD', 'CAD', 'NZD', 'RUB', 'CNY', 'INR', 'BRL', 'MXN', 'KRW', 'SGD', 'HKD', 'NOK', 'SEK', 'DKK', 'PLN', 'CZK', 'HUF', 'TRY', 'ZAR', 'ILS', 'AED', 'SAR', 'QAR', 'KWD', 'BHD', 'OMR', 'JOD', 'LBP', 'EGP', 'MAD', 'TND', 'DZD', 'LYD', 'SDG', 'ETB', 'KES', 'UGX', 'TZS', 'ZMW', 'BWP', 'SZL', 'LSL', 'NAD', 'MUR', 'SCR', 'MVR', 'NPR', 'PKR', 'BDT', 'LKR', 'MMK', 'THB', 'VND', 'IDR', 'MYR', 'PHP', 'TWD', 'KHR', 'LAK', 'BND', 'FJD', 'PGK', 'WST', 'TOP', 'VUV', 'SBD', 'NZD', 'AUD', 'CAD', 'USD']

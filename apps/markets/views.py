@@ -13,6 +13,8 @@ from django.contrib import messages
 from django.db.models import Q
 import logging
 import os
+from typing import List
+from datetime import datetime, date, timedelta
 
 from apps.data.models import Instrument, Commodity, Cryptocurrency, Forex
 from apps.activity.models import ViewEvent
@@ -21,6 +23,98 @@ from .comparison_service import get_comparison_service
 from .assets import AssetFactory, AssetType
 
 logger = logging.getLogger(__name__)
+
+
+def _get_days_for_period(period: str) -> int:
+    """Get number of days for the given period."""
+    period_map = {
+        '1M': 30,
+        '3M': 90,
+        '6M': 180,
+        'YTD': 365,  # Will be filtered to YTD in the chart
+        '1Y': 365,
+        '3Y': 1095,
+        '5Y': 1825,
+        '10Y': 3650,
+    }
+    # Always fetch more data than needed to ensure we have enough for filtering
+    requested_days = period_map.get(period, 365)
+    # Add buffer to ensure we have enough data for filtering
+    return max(requested_days * 2, 3650)  # Fetch at least 10 years or 2x the requested period
+
+
+def _get_years_for_period(period: str) -> float:
+    """Get number of years for the given period."""
+    period_map = {
+        '1M': 30/365.25,
+        '3M': 90/365.25,
+        '6M': 180/365.25,
+        'YTD': 1.0,  # Approximate for YTD
+        '1Y': 1.0,
+        '3Y': 3.0,
+        '5Y': 5.0,
+        '10Y': 10.0,
+    }
+    return period_map.get(period, 1.0)  # Default to 1 year
+
+
+def _aggregate_monthly_data(prices: List) -> List:
+    """
+    Aggregate daily price data into monthly data points.
+    
+    Args:
+        prices: List of price objects with date, close_price, etc.
+        
+    Returns:
+        List of monthly aggregated price objects
+    """
+    if not prices:
+        return prices
+    
+    # Group prices by year-month
+    monthly_groups = {}
+    for price in prices:
+        # Use the last day of the month as the representative date
+        year_month = (price.date.year, price.date.month)
+        if year_month not in monthly_groups:
+            monthly_groups[year_month] = []
+        monthly_groups[year_month].append(price)
+    
+    # Create monthly aggregated data points
+    monthly_prices = []
+    for (year, month), month_prices in sorted(monthly_groups.items()):
+        if not month_prices:
+            continue
+            
+        # Sort by date to get chronological order
+        month_prices.sort(key=lambda p: p.date)
+        
+        # Use the last trading day of the month
+        last_price = month_prices[-1]
+        
+        # Create aggregated price object
+        monthly_price = type('Price', (), {})()
+        monthly_price.date = last_price.date
+        monthly_price.close_price = last_price.close_price
+        monthly_price.open_price = month_prices[0].open_price if month_prices[0].open_price else last_price.close_price
+        monthly_price.high_price = max(p.high_price for p in month_prices if p.high_price) if any(p.high_price for p in month_prices) else last_price.close_price
+        monthly_price.low_price = min(p.low_price for p in month_prices if p.low_price) if any(p.low_price for p in month_prices) else last_price.close_price
+        monthly_price.volume = sum(p.volume for p in month_prices if p.volume) if any(p.volume for p in month_prices) else last_price.volume
+        
+        # Format prices
+        monthly_price.open_price_formatted = f"₽{monthly_price.open_price:.2f}" if monthly_price.open_price else 'N/A'
+        monthly_price.high_price_formatted = f"₽{monthly_price.high_price:.2f}" if monthly_price.high_price else 'N/A'
+        monthly_price.low_price_formatted = f"₽{monthly_price.low_price:.2f}" if monthly_price.low_price else 'N/A'
+        monthly_price.close_price_formatted = f"₽{monthly_price.close_price:.2f}" if monthly_price.close_price else 'N/A'
+        monthly_price.volume_formatted = f"{monthly_price.volume:,}" if monthly_price.volume else 'N/A'
+        
+        # For template compatibility
+        monthly_price.price = monthly_price.close_price
+        monthly_price.formatted_price = monthly_price.close_price_formatted
+        
+        monthly_prices.append(monthly_price)
+    
+    return monthly_prices
 
 
 def index(request):
@@ -74,10 +168,29 @@ def search(request):
 
 def info(request, symbol=None):
     """Symbol information page."""
+    # Get period parameter for price chart
+    period = request.GET.get('period', 'YTD')
+    
+    # Determine asset type from URL path
+    asset_type = None
+    if request.resolver_match and request.resolver_match.url_name:
+        url_name = request.resolver_match.url_name
+        if url_name == 'stock_info':
+            asset_type = 'stock'
+        elif url_name == 'etf_info':
+            asset_type = 'etf'
+        elif url_name == 'index_info':
+            asset_type = 'index'
+        elif url_name == 'crypto_info':
+            asset_type = 'cryptocurrency'
+        elif url_name == 'forex_info':
+            asset_type = 'forex'
+        elif url_name == 'commodity_info':
+            asset_type = 'commodity'
+    
     if not symbol:
-        # Handle search form submission
-        query = request.GET.get('query', '').strip()
-        search_type = request.GET.get('search_type', 'symbol')
+        # Redirect to homepage since analysis form is now there
+        return redirect('core:home')
         
         if query:
             # Perform search based on type
@@ -129,8 +242,20 @@ def info(request, symbol=None):
                                 pass
                         
                         if data:
-                            # Redirect to the symbol page
-                            return redirect('markets:info_symbol', symbol=symbol_upper)
+                            # Redirect to the appropriate type-based symbol page
+                            if asset_type == 'stock':
+                                return redirect('markets:stock_info', symbol=symbol_upper)
+                            elif asset_type == 'etf':
+                                return redirect('markets:etf_info', symbol=symbol_upper)
+                            elif asset_type == 'commodity':
+                                return redirect('markets:commodity_info', symbol=symbol_upper)
+                            elif asset_type == 'cryptocurrency':
+                                return redirect('markets:crypto_info', symbol=symbol_upper)
+                            elif asset_type == 'forex':
+                                return redirect('markets:forex_info', symbol=symbol_upper)
+                            else:
+                                # Fallback to stock route
+                                return redirect('markets:stock_info', symbol=symbol_upper)
                         else:
                             search_error = _('Symbol not found. Please check the symbol and try again.')
                             
@@ -215,8 +340,20 @@ def info(request, symbol=None):
                                 pass
                         
                         if data:
-                            # Redirect to the symbol page
-                            return redirect('markets:info_symbol', symbol=symbol_upper)
+                            # Redirect to the appropriate type-based symbol page
+                            if asset_type == 'stock':
+                                return redirect('markets:stock_info', symbol=symbol_upper)
+                            elif asset_type == 'etf':
+                                return redirect('markets:etf_info', symbol=symbol_upper)
+                            elif asset_type == 'commodity':
+                                return redirect('markets:commodity_info', symbol=symbol_upper)
+                            elif asset_type == 'cryptocurrency':
+                                return redirect('markets:crypto_info', symbol=symbol_upper)
+                            elif asset_type == 'forex':
+                                return redirect('markets:forex_info', symbol=symbol_upper)
+                            else:
+                                # Fallback to stock route
+                                return redirect('markets:stock_info', symbol=symbol_upper)
                         else:
                             search_error = _('{} not found. Please check the symbol and try again.').format(search_type.title())
                             
@@ -286,9 +423,101 @@ def info(request, symbol=None):
             view_type='info'
         )
     
-    # Get price history using the asset
-    raw_prices = asset.get_price_history(days=365)
-    logger.info(f"Retrieved {len(raw_prices)} raw price records for {symbol}")
+    # Get price history using the asset based on period
+    days = _get_days_for_period(period)
+    raw_prices = asset.get_price_history(days=days)
+    logger.info(f"Retrieved {len(raw_prices)} raw price records for {symbol} (period: {period}, days: {days})")
+    
+    # Debug: Check date range of raw data
+    if raw_prices:
+        dates = []
+        for p in raw_prices:
+            if isinstance(p, dict) and p.get('date'):
+                dates.append(p['date'])
+        if dates:
+            min_date = min(dates)
+            max_date = max(dates)
+            logger.info(f"Raw data date range for {symbol}: {min_date} to {max_date}")
+    
+    
+    # Convert raw prices to Price objects first
+    prices = []
+    for p in raw_prices:
+        # Create a simple price object for template compatibility
+        price_obj = type('Price', (), {})()
+        
+        # Ensure date is a datetime object for template formatting
+        date_value = p.get('date')
+        if isinstance(date_value, str):
+            try:
+                price_obj.date = datetime.strptime(date_value, '%Y-%m-%d')
+            except ValueError:
+                price_obj.date = datetime.now()
+        elif not date_value:
+            price_obj.date = datetime.now()
+        else:
+            price_obj.date = date_value
+        
+        # Try multiple possible field names for price data
+        price_obj.close_price = (p.get('close') or 
+                              p.get('adjClose') or 
+                              p.get('price') or 
+                              p.get('close_price'))
+        price_obj.open_price = p.get('open') or p.get('open_price')
+        price_obj.high_price = p.get('high') or p.get('high_price')
+        price_obj.low_price = p.get('low') or p.get('low_price')
+        price_obj.volume = p.get('volume')
+        
+        price_obj.open_price_formatted = f"₽{price_obj.open_price:.2f}" if price_obj.open_price else 'N/A'
+        price_obj.high_price_formatted = f"₽{price_obj.high_price:.2f}" if price_obj.high_price else 'N/A'
+        price_obj.low_price_formatted = f"₽{price_obj.low_price:.2f}" if price_obj.low_price else 'N/A'
+        price_obj.close_price_formatted = f"₽{price_obj.close_price:.2f}" if price_obj.close_price else 'N/A'
+        price_obj.volume_formatted = f"{price_obj.volume:,}" if price_obj.volume else 'N/A'
+        
+        # For template compatibility
+        price_obj.price = price_obj.close_price
+        price_obj.formatted_price = price_obj.close_price_formatted
+        
+        prices.append(price_obj)
+    
+    
+    # Filter prices by period if needed
+    if period == 'YTD':
+        current_year = datetime.now().year
+        prices = [p for p in prices if p.date.year == current_year]
+        logger.info(f"Filtered to YTD: {len(prices)} records")
+    else:
+        # For other periods, ensure we have the correct date range
+        today = datetime.now().date()
+        
+        if period == '1M':
+            start_date = today - timedelta(days=30)
+        elif period == '3M':
+            start_date = today - timedelta(days=90)
+        elif period == '6M':
+            start_date = today - timedelta(days=180)
+        elif period == '1Y':
+            start_date = today - timedelta(days=365)
+        elif period == '3Y':
+            start_date = today - timedelta(days=1095)
+        elif period == '5Y':
+            start_date = today - timedelta(days=1825)
+        elif period == '10Y':
+            start_date = today - timedelta(days=3650)
+        else:
+            start_date = today - timedelta(days=3650)  # Default to 10Y
+        
+        # Filter prices to ensure they're within the period
+        filtered_prices = [p for p in prices if p.date.date() >= start_date]
+        
+        if len(filtered_prices) != len(prices):
+            logger.info(f"Filtered {symbol} from {len(prices)} to {len(filtered_prices)} records for period {period}")
+            prices = filtered_prices
+    
+    # Apply monthly aggregation for very long periods to reduce chart density
+    if period in ['3Y', '5Y', '10Y']:
+        prices = _aggregate_monthly_data(prices)
+        logger.info(f"Applied monthly aggregation for {period}: {len(prices)} monthly data points")
     
     # Check if API key is configured
     api_key = getattr(settings, 'FMP_API_KEY', '') or os.getenv('FMP_API_KEY', '')
@@ -298,7 +527,6 @@ def info(request, symbol=None):
     if not raw_prices and not has_api_key:
         logger.info("No API key configured, providing sample data for demonstration")
         # Generate sample price data for demonstration
-        from datetime import datetime, timedelta
         import random
         
         base_price = 150.0  # Base price for SBERP.ME
@@ -323,54 +551,67 @@ def info(request, symbol=None):
         
         raw_prices = sample_prices
         logger.info(f"Generated {len(raw_prices)} sample price records")
-    
-    # Create a proper Price class for template compatibility
-    class Price:
-        def __init__(self, data):
-            from datetime import datetime
+        
+        # Convert sample prices to Price objects
+        prices = []
+        for p in raw_prices:
+            # Create a simple price object for template compatibility
+            price_obj = type('Price', (), {})()
             
             # Ensure date is a datetime object for template formatting
-            date_value = data.get('date')
+            date_value = p.get('date')
             if isinstance(date_value, str):
                 try:
-                    self.date = datetime.strptime(date_value, '%Y-%m-%d')
+                    price_obj.date = datetime.strptime(date_value, '%Y-%m-%d')
                 except ValueError:
-                    self.date = datetime.now()
+                    price_obj.date = datetime.now()
             elif not date_value:
-                self.date = datetime.now()
+                price_obj.date = datetime.now()
             else:
-                self.date = date_value
+                price_obj.date = date_value
             
             # Try multiple possible field names for price data
-            self.close_price = (data.get('close') or 
-                              data.get('adjClose') or 
-                              data.get('price') or 
-                              data.get('close_price'))
-            self.open_price = data.get('open') or data.get('open_price')
-            self.high_price = data.get('high') or data.get('high_price')
-            self.low_price = data.get('low') or data.get('low_price')
-            self.volume = data.get('volume')
+            price_obj.close_price = (p.get('close') or 
+                                  p.get('adjClose') or 
+                                  p.get('price') or 
+                                  p.get('close_price'))
+            price_obj.open_price = p.get('open') or p.get('open_price')
+            price_obj.high_price = p.get('high') or p.get('high_price')
+            price_obj.low_price = p.get('low') or p.get('low_price')
+            price_obj.volume = p.get('volume')
             
-            self.open_price_formatted = f"₽{self.open_price:.2f}" if self.open_price else 'N/A'
-            self.high_price_formatted = f"₽{self.high_price:.2f}" if self.high_price else 'N/A'
-            self.low_price_formatted = f"₽{self.low_price:.2f}" if self.low_price else 'N/A'
-            self.close_price_formatted = f"₽{self.close_price:.2f}" if self.close_price else 'N/A'
+            price_obj.open_price_formatted = f"₽{price_obj.open_price:.2f}" if price_obj.open_price else 'N/A'
+            price_obj.high_price_formatted = f"₽{price_obj.high_price:.2f}" if price_obj.high_price else 'N/A'
+            price_obj.low_price_formatted = f"₽{price_obj.low_price:.2f}" if price_obj.low_price else 'N/A'
+            price_obj.close_price_formatted = f"₽{price_obj.close_price:.2f}" if price_obj.close_price else 'N/A'
+            price_obj.volume_formatted = f"{price_obj.volume:,}" if price_obj.volume else 'N/A'
+            
+            # For template compatibility
+            price_obj.price = price_obj.close_price
+            price_obj.formatted_price = price_obj.close_price_formatted
+            
+            prices.append(price_obj)
     
     # Transform price data to match template expectations
-    prices = [Price(price) for price in raw_prices]
+    # prices are already converted to Price objects above
     logger.info(f"Transformed {len(prices)} price records for template")
     
-    # Calculate metrics for template
+    # Calculate metrics for template based on period
     metrics = {}
     if prices:
         try:
             from .metrics import calculate_metrics
             price_values = [float(p.close_price) for p in prices if p.close_price is not None]
             if price_values:
+                # Calculate years based on period
+                years = _get_years_for_period(period)
+                # Determine frequency based on period (monthly vs daily)
+                frequency = 12 if period in ['3Y', '5Y', '10Y'] else 252
                 metrics = calculate_metrics(
                     price_values,
                     risk_free_rate=settings.DEFAULT_RF,
-                    years=5.0
+                    years=years,
+                    frequency=frequency
                 )
         except Exception as e:
             logger.warning(f"Failed to calculate metrics for {symbol}: {e}")
@@ -385,6 +626,7 @@ def info(request, symbol=None):
             'quote': quote,
             'prices': prices,
             'metrics': metrics,
+            'period': period,
             'show_search_form': False,
         }
     elif asset.asset_type == AssetType.CRYPTOCURRENCY:
@@ -396,6 +638,7 @@ def info(request, symbol=None):
             'quote': quote,
             'prices': prices,
             'metrics': metrics,
+            'period': period,
             'show_search_form': False,
         }
     elif asset.asset_type == AssetType.FOREX:
@@ -406,6 +649,7 @@ def info(request, symbol=None):
             'quote': quote,
             'prices': prices,
             'metrics': metrics,
+            'period': period,
             'show_search_form': False,
         }
     else:
@@ -428,7 +672,13 @@ def info(request, symbol=None):
             'data': quote,
             'prices': prices,
             'metrics': metrics,
+            'period': period,
             'show_search_form': False,
+            'currency_symbol': '$' if asset.currency == 'USD' else asset.currency,
+            'is_stock': True,
+            'is_commodity': False,
+            'is_cryptocurrency': False,
+            'is_forex': False,
         }
     
     logger.info(f"Final context for {symbol}: asset_type={asset.asset_type.value}, prices_count={len(prices)}")
@@ -565,7 +815,7 @@ def compare(request, symbols=None):
     # Get comparison parameters
     base_currency = request.GET.get('base_currency', '').upper()
     include_dividends = True  # Always include dividends
-    period = request.GET.get('period', '1Y')
+    period = request.GET.get('period', 'YTD')
     normalize_mode = request.GET.get('normalize_mode', 'percent_change')
     
     # Validate base currency

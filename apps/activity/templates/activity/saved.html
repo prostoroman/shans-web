@@ -34,7 +34,7 @@
                     </div>
                     <div class="card-body">
                         <div class="d-grid gap-2">
-                            <a href="{% url 'markets:compare' %}" class="btn btn-primary">
+                            <a href="{% url 'compare' %}" class="btn btn-primary">
                                 <i class="fas fa-balance-scale me-2"></i>{% trans "New Comparison" %}
                             </a>
                             <a href="{% url 'portfolio:form' %}" class="btn btn-success">
@@ -90,7 +90,7 @@
                                         </span>
                                         <div class="btn-group btn-group-sm">
                                             {% if saved_set.set_type == 'compare' %}
-                                                <a href="{% url 'markets:compare' %}?symbols={{ saved_set.symbols|join:',' }}" class="btn btn-outline-success btn-sm">
+                                                <a href="{% url 'compare_symbols' symbols=saved_set.symbols|join:',' %}" class="btn btn-outline-success btn-sm">
                                                     <i class="fas fa-balance-scale"></i>
                                                 </a>
                                             {% elif saved_set.set_type == 'portfolio' %}
@@ -157,7 +157,7 @@
                             {% trans "Save your favorite comparisons and portfolios for easy access." %}
                         </p>
                         <div class="d-grid gap-2 d-md-block">
-                            <a href="{% url 'markets:compare' %}" class="btn btn-primary">
+                            <a href="{% url 'compare' %}" class="btn btn-primary">
                                 <i class="fas fa-balance-scale me-2"></i>{% trans "Create Comparison" %}
                             </a>
                             <a href="{% url 'portfolio:form' %}" class="btn btn-success">
