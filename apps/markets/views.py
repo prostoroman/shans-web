@@ -341,19 +341,40 @@ def info(request, symbol=None):
             else:
                 self.date = date_value
             
-            self.close_price = data.get('close') or data.get('adjClose')
-            self.open_price = data.get('open')
-            self.high_price = data.get('high')
-            self.low_price = data.get('low')
+            # Try multiple possible field names for price data
+            self.close_price = (data.get('close') or 
+                              data.get('adjClose') or 
+                              data.get('price') or 
+                              data.get('close_price'))
+            self.open_price = data.get('open') or data.get('open_price')
+            self.high_price = data.get('high') or data.get('high_price')
+            self.low_price = data.get('low') or data.get('low_price')
             self.volume = data.get('volume')
-            self.open_price_formatted = f"₽{data.get('open', 0):.2f}" if data.get('open') else 'N/A'
-            self.high_price_formatted = f"₽{data.get('high', 0):.2f}" if data.get('high') else 'N/A'
-            self.low_price_formatted = f"₽{data.get('low', 0):.2f}" if data.get('low') else 'N/A'
-            self.close_price_formatted = f"₽{data.get('close', 0):.2f}" if data.get('close') else 'N/A'
+            
+            self.open_price_formatted = f"₽{self.open_price:.2f}" if self.open_price else 'N/A'
+            self.high_price_formatted = f"₽{self.high_price:.2f}" if self.high_price else 'N/A'
+            self.low_price_formatted = f"₽{self.low_price:.2f}" if self.low_price else 'N/A'
+            self.close_price_formatted = f"₽{self.close_price:.2f}" if self.close_price else 'N/A'
     
     # Transform price data to match template expectations
     prices = [Price(price) for price in raw_prices]
     logger.info(f"Transformed {len(prices)} price records for template")
+    
+    # Calculate metrics for template
+    metrics = {}
+    if prices:
+        try:
+            from .metrics import calculate_metrics
+            price_values = [float(p.close_price) for p in prices if p.close_price is not None]
+            if price_values:
+                metrics = calculate_metrics(
+                    price_values,
+                    risk_free_rate=settings.DEFAULT_RF,
+                    years=5.0
+                )
+        except Exception as e:
+            logger.warning(f"Failed to calculate metrics for {symbol}: {e}")
+            metrics = {}
     
     # Prepare context based on asset type
     if asset.asset_type == AssetType.COMMODITY:
@@ -363,6 +384,7 @@ def info(request, symbol=None):
             'is_commodity': True,
             'quote': quote,
             'prices': prices,
+            'metrics': metrics,
             'show_search_form': False,
         }
     elif asset.asset_type == AssetType.CRYPTOCURRENCY:
@@ -373,6 +395,7 @@ def info(request, symbol=None):
             'cryptocurrency': quote,
             'quote': quote,
             'prices': prices,
+            'metrics': metrics,
             'show_search_form': False,
         }
     elif asset.asset_type == AssetType.FOREX:
@@ -382,6 +405,7 @@ def info(request, symbol=None):
             'is_forex': True,
             'quote': quote,
             'prices': prices,
+            'metrics': metrics,
             'show_search_form': False,
         }
     else:
@@ -403,6 +427,7 @@ def info(request, symbol=None):
             'instrument': instrument,
             'data': quote,
             'prices': prices,
+            'metrics': metrics,
             'show_search_form': False,
         }
     

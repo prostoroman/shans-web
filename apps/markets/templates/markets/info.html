@@ -7,6 +7,7 @@
 {% block meta_description %}{% if show_search_form %}{% trans "Search for stock information and analysis. Enter a symbol to view detailed metrics, fundamentals, and performance data." %}{% else %}{% trans "Detailed analysis of" %} {{ symbol }}{% if instrument %} ({{ instrument.name }}){% endif %}. {% trans "View key metrics, fundamentals, and performance data." %}{% endif %}{% endblock %}
 
 {% block content %}
+
 <div class="row">
     <div class="col-12">
         {% if show_search_form %}
@@ -266,7 +267,7 @@
                                     <i class="fas fa-bookmark me-2"></i>{% trans "Save" %}
                                 </button>
                             {% endif %}
-                            <button id="ai-summary-btn" class="btn btn-warning text-dark" data-symbol="{{ symbol }}">
+                            <button class="ai-summary-btn btn btn-warning text-dark" data-symbol="{{ symbol }}">
                                 <i class="fas fa-robot me-2"></i>{% trans "AI Summary" %}
                             </button>
                         </div>
@@ -324,28 +325,6 @@
         </div>
         {% endif %}
 
-        <!-- AI Summary Result Placeholder -->
-        <div id="ai-summary-card" class="row" style="display:none;">
-            <div class="col-12">
-                <div class="card mt-3">
-                    <div class="card-header d-flex align-items-center">
-                        <i class="fas fa-robot me-2"></i>
-                        <h5 class="mb-0">{% trans "AI Summary" %}</h5>
-                    </div>
-                    <div class="card-body">
-                        <div id="ai-summary-loading" class="d-flex align-items-center">
-                            <div class="spinner-border text-warning me-3" role="status"></div>
-                            <div>
-                                <div id="ai-summary-status" class="fw-semibold">{% trans "Preparing analysis..." %}</div>
-                                <small class="text-muted">{% trans "This may take up to 10-15 seconds on first run. Cached for 24h thereafter." %}</small>
-                            </div>
-                        </div>
-                        <div id="ai-summary-content" style="display:none;"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
         <!-- Price Chart -->
         {% if prices %}
         <div class="row mb-4">
@@ -382,6 +361,28 @@
             </div>
         </div>
         {% endif %}
+        
+        <!-- AI Summary Result Placeholder - Always render -->
+        <div id="ai-summary-card-commodity" class="row" style="display:none;">
+            <div class="col-12">
+                <div class="card mt-3">
+                    <div class="card-header d-flex align-items-center">
+                        <i class="fas fa-robot me-2"></i>
+                        <h5 class="mb-0">{% trans "AI Summary" %}</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="ai-summary-loading-commodity" class="d-flex align-items-center" style="display:none;">
+                            <div class="spinner-border text-warning me-3" role="status"></div>
+                            <div>
+                                <div id="ai-summary-status-commodity" class="fw-semibold">{% trans "Preparing analysis..." %}</div>
+                                <small class="text-muted">{% trans "This may take up to 1 minute." %}</small>
+                            </div>
+                        </div>
+                        <div id="ai-summary-content-commodity" style="display:none;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
         
         
         <!-- Commodity Price Chart JavaScript -->
@@ -562,7 +563,7 @@
                                     <i class="fas fa-bookmark me-2"></i>{% trans "Save" %}
                                 </button>
                             {% endif %}
-                            <button id="ai-summary-btn" class="btn btn-warning text-dark" data-symbol="{{ symbol }}">
+                            <button class="ai-summary-btn btn btn-warning text-dark" data-symbol="{{ symbol }}">
                                 <i class="fas fa-robot me-2"></i>{% trans "AI Summary" %}
                             </button>
                         </div>
@@ -585,50 +586,26 @@
                         <div class="row">
                             <div class="col-md-3">
                                 <div class="text-center">
-                                    <h4 class="text-primary">
-                                        {% if quote.price %}
-                                            {{ cryptocurrency.get_currency_symbol }}{{ quote.price|floatformat:2 }}
-                                        {% else %}
-                                            N/A
-                                        {% endif %}
-                                    </h4>
-                                    <p class="text-muted">{% trans "Current Price" %}</p>
+                                    <h4 class="text-primary">{{ metrics.cagr|mul:100|floatformat:2 }}%</h4>
+                                    <p class="text-muted">{% trans "CAGR (5Y)" %}</p>
                                 </div>
                             </div>
                             <div class="col-md-3">
                                 <div class="text-center">
-                                    <h4 class="{% if quote.changePercentage and quote.changePercentage < 0 %}text-danger{% else %}text-success{% endif %}">
-                                        {% if quote.changePercentage %}
-                                            {{ quote.changePercentage }}%
-                                        {% else %}
-                                            N/A
-                                        {% endif %}
-                                    </h4>
-                                    <p class="text-muted">{% trans "Daily Change" %}</p>
+                                    <h4 class="text-info">{{ metrics.volatility|mul:100|floatformat:2 }}%</h4>
+                                    <p class="text-muted">{% trans "Volatility" %}</p>
                                 </div>
                             </div>
                             <div class="col-md-3">
                                 <div class="text-center">
-                                    <h4 class="text-info">
-                                        {% if quote.dayHigh %}
-                                            {{ cryptocurrency.get_currency_symbol }}{{ quote.dayHigh|floatformat:2 }}
-                                        {% else %}
-                                            N/A
-                                        {% endif %}
-                                    </h4>
-                                    <p class="text-muted">{% trans "Day High" %}</p>
+                                    <h4 class="text-success">{{ metrics.sharpe_ratio|floatformat:2 }}</h4>
+                                    <p class="text-muted">{% trans "Sharpe Ratio" %}</p>
                                 </div>
                             </div>
                             <div class="col-md-3">
                                 <div class="text-center">
-                                    <h4 class="text-warning">
-                                        {% if quote.dayLow %}
-                                            {{ cryptocurrency.get_currency_symbol }}{{ quote.dayLow|floatformat:2 }}
-                                        {% else %}
-                                            N/A
-                                        {% endif %}
-                                    </h4>
-                                    <p class="text-muted">{% trans "Day Low" %}</p>
+                                    <h4 class="text-warning">{{ metrics.max_drawdown|mul:100|floatformat:2 }}%</h4>
+                                    <p class="text-muted">{% trans "Max Drawdown" %}</p>
                                 </div>
                             </div>
                         </div>
@@ -638,28 +615,6 @@
         </div>
         {% endif %}
 
-        <!-- AI Summary Result Placeholder -->
-        <div id="ai-summary-card" class="row" style="display:none;">
-            <div class="col-12">
-                <div class="card mt-3">
-                    <div class="card-header d-flex align-items-center">
-                        <i class="fas fa-robot me-2"></i>
-                        <h5 class="mb-0">{% trans "AI Summary" %}</h5>
-                    </div>
-                    <div class="card-body">
-                        <div id="ai-summary-loading" class="d-flex align-items-center">
-                            <div class="spinner-border text-warning me-3" role="status"></div>
-                            <div>
-                                <div id="ai-summary-status" class="fw-semibold">{% trans "Preparing analysis..." %}</div>
-                                <small class="text-muted">{% trans "This may take up to 10-15 seconds on first run. Cached for 24h thereafter." %}</small>
-                            </div>
-                        </div>
-                        <div id="ai-summary-content" style="display:none;"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
         <!-- Price Chart -->
         {% if prices %}
         <div class="row mb-4">
@@ -697,6 +652,28 @@
         </div>
         {% endif %}
         
+        <!-- AI Summary Result Placeholder - Always render -->
+        <div id="ai-summary-card-crypto" class="row" style="display:none;">
+            <div class="col-12">
+                <div class="card mt-3">
+                    <div class="card-header d-flex align-items-center">
+                        <i class="fas fa-robot me-2"></i>
+                        <h5 class="mb-0">{% trans "AI Summary" %}</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="ai-summary-loading-crypto" class="d-flex align-items-center" style="display:none;">
+                            <div class="spinner-border text-warning me-3" role="status"></div>
+                            <div>
+                                <div id="ai-summary-status-crypto" class="fw-semibold">{% trans "Preparing analysis..." %}</div>
+                                <small class="text-muted">{% trans "This may take up to 1 minute." %}</small>
+                            </div>
+                        </div>
+                        <div id="ai-summary-content-crypto" style="display:none;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
         
         <!-- Cryptocurrency Price Chart JavaScript -->
         {% if is_cryptocurrency and prices %}
@@ -704,9 +681,9 @@
         // Cryptocurrency Price Chart Data
         const cryptocurrencyPriceData = [
         {% for price in prices|slice:":50" %}
-            {% if price.close_price %}
+            {% if price.close_price and price.close_price != None %}
             {
-                x: '{{ price.timestamp|date:"Y-m-d" }}',
+                x: '{{ price.date|date:"Y-m-d" }}',
                 y: {{ price.close_price|floatformat:2 }}
             }{% if not forloop.last %},{% endif %}
             {% endif %}
@@ -714,7 +691,7 @@
         ].reverse();
 
         // Currency symbol for chart formatting
-        const cryptoCurrencySymbol = '{{ cryptocurrency.get_currency_symbol }}';
+        const cryptoCurrencySymbol = '$';
 
         // Initialize cryptocurrency chart function
         function initializeCryptocurrencyChart() {
@@ -772,7 +749,7 @@
                                     beginAtZero: false,
                                     title: {
                                         display: true,
-                                        text: '{% trans "Price" %} ({{ cryptocurrency.get_currency_symbol }})'
+                                        text: '{% trans "Price" %} ($)'
                                     },
                                     ticks: {
                                         callback: function(value) {
@@ -1038,6 +1015,28 @@
         </script>
         {% endif %}
         
+        <!-- AI Summary Result Placeholder - Always render -->
+        <div id="ai-summary-card-forex" class="row" style="display:none;">
+            <div class="col-12">
+                <div class="card mt-3">
+                    <div class="card-header d-flex align-items-center">
+                        <i class="fas fa-robot me-2"></i>
+                        <h5 class="mb-0">{% trans "AI Summary" %}</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="ai-summary-loading-forex" class="d-flex align-items-center" style="display:none;">
+                            <div class="spinner-border text-warning me-3" role="status"></div>
+                            <div>
+                                <div id="ai-summary-status-forex" class="fw-semibold">{% trans "Preparing analysis..." %}</div>
+                                <small class="text-muted">{% trans "This may take up to 1 minute." %}</small>
+                            </div>
+                        </div>
+                        <div id="ai-summary-content-forex" style="display:none;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
         {% else %}
         <h1 class="mb-4">
             {{ symbol }} - {{ instrument.name }}
@@ -1097,7 +1096,7 @@
                                     <i class="fas fa-bookmark me-2"></i>{% trans "Save" %}
                                 </button>
                             {% endif %}
-                            <button id="ai-summary-btn" class="btn btn-warning text-dark" data-symbol="{{ symbol }}">
+                            <button class="ai-summary-btn btn btn-warning text-dark" data-symbol="{{ symbol }}">
                                 <i class="fas fa-robot me-2"></i>{% trans "AI Summary" %}
                             </button>
                         </div>
@@ -1149,28 +1148,6 @@
         </div>
         {% endif %}
 
-        <!-- AI Summary Result Placeholder -->
-        <div id="ai-summary-card" class="row" style="display:none;">
-            <div class="col-12">
-                <div class="card mt-3">
-                    <div class="card-header d-flex align-items-center">
-                        <i class="fas fa-robot me-2"></i>
-                        <h5 class="mb-0">{% trans "AI Summary" %}</h5>
-                    </div>
-                    <div class="card-body">
-                        <div id="ai-summary-loading" class="d-flex align-items-center">
-                            <div class="spinner-border text-warning me-3" role="status"></div>
-                            <div>
-                                <div id="ai-summary-status" class="fw-semibold">{% trans "Preparing analysis..." %}</div>
-                                <small class="text-muted">{% trans "This may take up to 10-15 seconds on first run. Cached for 24h thereafter." %}</small>
-                            </div>
-                        </div>
-                        <div id="ai-summary-content" style="display:none;"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
         <!-- Fundamentals -->
         {% if fundamentals %}
         <div class="row mb-4">
@@ -1227,7 +1204,7 @@
         {% endif %}
         
         <!-- Price Chart -->
-        {% if prices %}
+        {% if prices and not is_cryptocurrency %}
         <div class="row mb-4">
             <div class="col-12">
                 <div class="card">
@@ -1262,6 +1239,28 @@
             </div>
         </div>
         {% endif %}
+        
+        <!-- AI Summary Result Placeholder - Always render -->
+        <div id="ai-summary-card-stock" class="row" style="display:none;">
+            <div class="col-12">
+                <div class="card mt-3">
+                    <div class="card-header d-flex align-items-center">
+                        <i class="fas fa-robot me-2"></i>
+                        <h5 class="mb-0">{% trans "AI Summary" %}</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="ai-summary-loading-stock" class="d-flex align-items-center" style="display:none;">
+                            <div class="spinner-border text-warning me-3" role="status"></div>
+                            <div>
+                                <div id="ai-summary-status-stock" class="fw-semibold">{% trans "Preparing analysis..." %}</div>
+                                <small class="text-muted">{% trans "This may take up to 1 minute." %}</small>
+                            </div>
+                        </div>
+                        <div id="ai-summary-content-stock" style="display:none;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
         
         {% endif %}
     </div>
@@ -1330,7 +1329,7 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 {% endif %}
 
-{% if prices %}
+{% if prices and not is_cryptocurrency %}
 <script>
 // Price Chart Data
 const priceData = [
@@ -1443,27 +1442,92 @@ if (document.readyState === 'loading') {
 <script>
 (function(){
   function startAISummary(symbol){
-    const card = document.getElementById('ai-summary-card');
-    const loading = document.getElementById('ai-summary-loading');
-    const content = document.getElementById('ai-summary-content');
-    const statusEl = document.getElementById('ai-summary-status');
-    if(card){ card.style.display = 'block'; }
-    if(loading){ loading.style.display = 'flex'; }
-    if(content){ content.style.display = 'none'; content.innerHTML=''; }
-    if(statusEl){ statusEl.textContent = '{{ _('Preparing analysis...') }}'; }
+    // Determine which AI summary card to use based on the current page context
+    let cardId, loadingId, contentId, statusId;
+    
+    // Check if we're on a commodity page
+    if (document.querySelector('#commodityPriceChart')) {
+      cardId = 'ai-summary-card-commodity';
+      loadingId = 'ai-summary-loading-commodity';
+      contentId = 'ai-summary-content-commodity';
+      statusId = 'ai-summary-status-commodity';
+    }
+    // Check if we're on a cryptocurrency page
+    else if (document.querySelector('#cryptocurrencyPriceChart')) {
+      cardId = 'ai-summary-card-crypto';
+      loadingId = 'ai-summary-loading-crypto';
+      contentId = 'ai-summary-content-crypto';
+      statusId = 'ai-summary-status-crypto';
+    }
+    // Check if we're on a forex page
+    else if (document.querySelector('#forexPriceChart')) {
+      cardId = 'ai-summary-card-forex';
+      loadingId = 'ai-summary-loading-forex';
+      contentId = 'ai-summary-content-forex';
+      statusId = 'ai-summary-status-forex';
+    }
+    // Default to stock
+    else {
+      cardId = 'ai-summary-card-stock';
+      loadingId = 'ai-summary-loading-stock';
+      contentId = 'ai-summary-content-stock';
+      statusId = 'ai-summary-status-stock';
+    }
+    
+    console.log('Using AI summary elements:', {cardId, loadingId, contentId, statusId});
+    
+    const card = document.getElementById(cardId);
+    const loading = document.getElementById(loadingId);
+    const content = document.getElementById(contentId);
+    const statusEl = document.getElementById(statusId);
+    
+    console.log('Found elements:', {card, loading, content, statusEl});
+    
+    if (card) {
+      card.style.display = 'block';
+      // Scroll to the AI summary block
+      card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    if (content) { content.style.display = 'none'; content.innerHTML=''; }
 
-    // Try cached summary first
+    // Try cached summary first - don't show loading spinner yet
     fetch('/api/v1/ai/summary/' + encodeURIComponent(symbol))
-      .then(function(r){ if(r.ok) return r.json(); throw new Error('no-cache'); })
+      .then(function(r){ 
+        console.log('Cache fetch response:', r.status);
+        if(r.ok) return r.json(); 
+        throw new Error('no-cache'); 
+      })
       .then(function(result){
+        console.log('Cache result:', result);
         if(result && result.summary){
-          if(loading) loading.style.display = 'none';
-          if(content){ content.style.display = 'block'; content.innerHTML = renderAISummary(result.summary); }
+          // Data loaded from cache - show content directly without loading spinner
+          console.log('Cached data found, showing content directly');
+          if(loading) {
+            console.log('Hiding loading element completely');
+            loading.style.display = 'none';
+            loading.style.visibility = 'hidden';
+          }
+          if(content){ 
+            console.log('Showing content');
+            content.style.display = 'block'; 
+            content.innerHTML = renderAISummary(result.summary); 
+          }
         } else {
+          console.log('No summary in result, showing loading spinner');
           throw new Error('no-cache');
         }
       })
-      .catch(function(){
+      .catch(function(error){
+        console.log('Cache fetch failed:', error);
+        console.log('No cached data, showing loading spinner and starting background job');
+        
+        // Only show loading spinner if no cached data
+        if(loading) {
+          loading.style.display = 'flex';
+          loading.style.visibility = 'visible';
+        }
+        if(statusEl) statusEl.textContent = 'Preparing analysis...';
+        
         // Start background job
         fetch('/api/v1/ai/summary/start?symbol=' + encodeURIComponent(symbol), {method: 'POST'})
           .then(function(r){ return r.json(); })
@@ -1491,7 +1555,11 @@ if (document.readyState === 'loading') {
         .then(function(body){
           if(body.status === 'completed' && body.result){
             clearInterval(interval);
-            if(loading) loading.style.display = 'none';
+            // Hide loading spinner completely when analysis is complete
+            if(loading) {
+              loading.style.display = 'none';
+              loading.style.visibility = 'hidden';
+            }
             if(content){ content.style.display = 'block'; content.innerHTML = renderAISummary(body.result.summary || ''); }
           } else if(body.status === 'completed' && !body.result) {
             // Try to fetch the cached result explicitly (race condition fallback)
@@ -1499,7 +1567,11 @@ if (document.readyState === 'loading') {
               .then(function(r){ if(r.ok) return r.json(); throw new Error('no-cache'); })
               .then(function(res){
                 clearInterval(interval);
-                if(loading) loading.style.display = 'none';
+                // Hide loading spinner completely when analysis is complete
+                if(loading) {
+                  loading.style.display = 'none';
+                  loading.style.visibility = 'hidden';
+                }
                 if(content){ content.style.display = 'block'; content.innerHTML = renderAISummary(res.summary || ''); }
               })
               .catch(function(){
@@ -1518,21 +1590,75 @@ if (document.readyState === 'loading') {
   }
 
   function renderAISummary(text){
-    // Basic formatting: convert newlines to paragraphs
+    // Basic formatting with simple bold headers
     var safe = (text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    var parts = safe.split(/\n{2,}/);
-    return parts.map(function(p){ return '<p>' + p.replace(/\n/g, '<br>') + '</p>'; }).join('');
+    
+    // Split into sections based on ### headers
+    var sections = safe.split(/(?=### )/);
+    var formattedSections = sections.map(function(section) {
+      if (!section.trim()) return '';
+      
+      var lines = section.trim().split('\n');
+      var header = '';
+      var content = '';
+      
+      // Check if first line is a header (starts with ###)
+      if (lines[0] && lines[0].startsWith('### ')) {
+        header = lines[0].replace('### ', '');
+        content = lines.slice(1).join('\n').trim();
+      } else {
+        content = section.trim();
+      }
+      
+      var result = '';
+      
+      // Add simple bold header if present
+      if (header) {
+        result += '<div class="mb-3">';
+        result += '<strong>' + header + '</strong>';
+        result += '</div>';
+      }
+      
+      // Format content with proper paragraphs
+      if (content) {
+        var paragraphs = content.split(/\n{2,}/);
+        paragraphs.forEach(function(para) {
+          if (para.trim()) {
+            // Check for bold text (**text**)
+            para = para.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            // Convert single line breaks to <br> within paragraphs
+            para = para.replace(/\n/g, '<br>');
+            result += '<p class="mb-3">' + para + '</p>';
+          }
+        });
+      }
+      
+      return result;
+    });
+    
+    return '<div class="ai-summary-formatted">' + formattedSections.join('') + '</div>';
   }
 
-  document.addEventListener('DOMContentLoaded', function(){
-    var btn = document.getElementById('ai-summary-btn');
-    if(btn){
-      btn.addEventListener('click', function(){
-        var symbol = btn.getAttribute('data-symbol');
+  // Attach click handlers to AI summary buttons
+  function attachAISummaryHandlers() {
+    var buttons = document.querySelectorAll('.ai-summary-btn');
+    buttons.forEach(function(btn){
+      btn.onclick = function() {
+        var symbol = this.getAttribute('data-symbol');
         startAISummary(symbol);
-      });
-    }
-  });
+      };
+    });
+  }
+  
+  // Try multiple ways to attach handlers
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', attachAISummaryHandlers);
+  } else {
+    attachAISummaryHandlers();
+  }
+  
+  // Also try after a short delay
+  setTimeout(attachAISummaryHandlers, 100);
 })();
 </script>
 
@@ -1588,6 +1714,11 @@ function saveSymbol(symbol) {
     .commodity-quote-info .metric-card {
         margin-bottom: 0.5rem;
     }
+}
+
+/* AI Summary Styling */
+.ai-summary-formatted {
+    line-height: 1.6;
 }
 </style>
 {% endblock %}

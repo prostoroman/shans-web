@@ -73,14 +73,17 @@ def _fetch_history(symbol: str, asset_class: str, days: int = 3650) -> Dict[str,
     splits = fmp_client.get_stock_splits(symbol)
     return {
         "series": _normalize_series(series, price_keys=["close", "adjClose", "price"]) ,
-        "dividends": [{"date": d.get("date"), "amount": _safe_float(d.get("adjDividend") or d.get("dividend"))} for d in (dividends or []) if d.get("date")],
-        "splits": [{"date": s.get("date"), "ratio": s.get("label") or s.get("numerator")} for s in (splits or []) if s.get("date")],
+        "dividends": [{"date": d.get("date"), "amount": _safe_float(d.get("adjDividend") or d.get("dividend"))} for d in (dividends or []) if isinstance(d, dict) and d.get("date")],
+        "splits": [{"date": s.get("date"), "ratio": s.get("label") or s.get("numerator")} for s in (splits or []) if isinstance(s, dict) and s.get("date")],
     }
 
 
 def _normalize_series(series: List[Dict[str, Any]], price_keys: List[str]) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     for p in series or []:
+        # Skip if p is not a dictionary
+        if not isinstance(p, dict):
+            continue
         d = p.get("date") or p.get("timestamp") or p.get("Date")
         price: Optional[float] = None
         for k in price_keys:
@@ -100,7 +103,7 @@ def _normalize_series(series: List[Dict[str, Any]], price_keys: List[str]) -> Li
 
 def _compute_calculations(history_series: List[Dict[str, Any]], rf_annual: float) -> Dict[str, Any]:
     # Extract price list
-    prices = [float(x["close"]) for x in history_series if x.get("close") is not None]
+    prices = [float(x["close"]) for x in history_series if isinstance(x, dict) and x.get("close") is not None]
     if len(prices) < 2:
         return {"returns": {}, "volatility": None, "maxDD": None, "sharpe": None}
 
@@ -128,7 +131,7 @@ def _compute_calculations(history_series: List[Dict[str, Any]], rf_annual: float
     # YTD calculation
     try:
         current_year = date.today().year
-        first_idx = next((i for i, pt in enumerate(history_series) if str(pt.get("date", "")).startswith(str(current_year))), None)
+        first_idx = next((i for i, pt in enumerate(history_series) if isinstance(pt, dict) and str(pt.get("date", "")).startswith(str(current_year))), None)
         if first_idx is not None and first_idx < len(prices):
             start = prices[first_idx]
             end = prices[-1]
