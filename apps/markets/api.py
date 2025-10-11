@@ -5,6 +5,7 @@ Market API views for DRF v1 endpoints.
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, serializers
+from typing import Optional
 from django.http import JsonResponse
 from django.utils.translation import gettext_lazy as _
 from django.db import models
@@ -15,6 +16,11 @@ from apps.markets.metrics import calculate_metrics
 from django.conf import settings
 from apps.core.throttling import PlanRateThrottle, BasicAnonThrottle
 from apps.data import fmp_client
+from django.core.cache import cache
+from uuid import uuid4
+from threading import Thread
+from apps.markets.ai_analysis import build_data_contract
+from apps.markets.llm import generate_asset_summary
 from apps.data.models import Exchange, Commodity
 
 
@@ -611,3 +617,114 @@ class ExchangeAPIView(APIView):
                 'count': 0,
                 'error': _('Failed to fetch exchanges')
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ------------------------------- AI Summary APIs -------------------------------
+
+AI_SUMMARY_TTL_SECONDS = 24 * 60 * 60  # 24 hours for result cache
+AI_JOB_TTL_SECONDS = 30 * 60  # 30 minutes for progress
+
+
+def _ai_job_key(job_id: str) -> str:
+    return f"ai:job:{job_id}"
+
+
+def _ai_result_key(symbol: str) -> str:
+    return f"ai:summary:{symbol.upper()}"
+
+
+def _update_job(job_id: str, status_text: str, percent: int, extra: Optional[dict] = None) -> None:
+    current = cache.get(_ai_job_key(job_id)) or {}
+    updated = {"status": status_text, "percent": percent}
+    if isinstance(current, dict):
+        updated = {**current, **updated}
+    if extra:
+        updated.update(extra)
+    cache.set(_ai_job_key(job_id), updated, AI_JOB_TTL_SECONDS)
+
+
+def _run_ai_pipeline(job_id: str, symbol: str) -> None:
+    try:
+        sym = symbol.upper()
+        _update_job(job_id, "Identifying asset...", 5)
+        data = build_data_contract(sym)
+
+        _update_job(job_id, "Preparing calculations...", 35)
+        # calculations are part of data-contract already
+
+        _update_job(job_id, "Summarizing with AI...", 65)
+        summary = generate_asset_summary(data) or ""
+
+        _update_job(job_id, "Finalizing...", 90)
+        payload = {"symbol": sym, "data": data, "summary": summary}
+        cache.set(_ai_result_key(sym), payload, AI_SUMMARY_TTL_SECONDS)
+        _update_job(job_id, "completed", 100)
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"AI pipeline failed for {symbol}: {e}")
+        cache.set(_ai_job_key(job_id), {"status": "failed", "percent": 100, "error": str(e)}, AI_JOB_TTL_SECONDS)
+
+
+class AISummaryStartAPIView(APIView):
+    """POST /api/v1/ai/summary/start?symbol=..."""
+    throttle_classes = [PlanRateThrottle, BasicAnonThrottle]
+
+    def _start(self, symbol: str):
+        symbol = symbol.upper()
+        # If cached summary exists, return completed immediately
+        existing = cache.get(_ai_result_key(symbol))
+        if existing:
+            job_id = str(uuid4())
+            _update_job(job_id, "completed", 100, {"symbol": symbol})
+            return {"job_id": job_id, "status": "completed", "result": existing}
+
+        job_id = str(uuid4())
+        _update_job(job_id, "queued", 0, {"symbol": symbol})
+        t = Thread(target=_run_ai_pipeline, args=(job_id, symbol), daemon=True)
+        t.start()
+        return {"job_id": job_id, "status": "queued"}
+
+    def post(self, request):
+        symbol = (request.GET.get('symbol') or request.data.get('symbol') or '').upper()
+        if not symbol:
+            return Response({'error': _('Symbol parameter is required')}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self._start(symbol))
+
+    def get(self, request):
+        symbol = (request.GET.get('symbol') or '').upper()
+        if not symbol:
+            return Response({'error': _('Symbol parameter is required')}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self._start(symbol))
+
+
+class AISummaryStatusAPIView(APIView):
+    """GET /api/v1/ai/summary/status?job_id=..."""
+    throttle_classes = [PlanRateThrottle, BasicAnonThrottle]
+
+    def get(self, request):
+        job_id = (request.GET.get('job_id') or '').strip()
+        if not job_id:
+            return Response({'error': _('job_id is required')}, status=status.HTTP_400_BAD_REQUEST)
+        job = cache.get(_ai_job_key(job_id))
+        if not job:
+            return Response({'error': _('job not found')}, status=status.HTTP_404_NOT_FOUND)
+        # Return result as well when completed
+        result = None
+        if job.get('status') == 'completed':
+            symbol = request.GET.get('symbol') or job.get('symbol')
+            if symbol:
+                result = cache.get(_ai_result_key(str(symbol).upper()))
+        return Response({"job_id": job_id, **job, "result": result})
+
+
+class AISummaryGetAPIView(APIView):
+    """GET /api/v1/ai/summary/<symbol> - return cached result if exists"""
+    throttle_classes = [PlanRateThrottle, BasicAnonThrottle]
+
+    def get(self, request, symbol: str = ""):
+        sym = (symbol or request.GET.get('symbol') or '').upper()
+        if not sym:
+            return Response({'error': _('Symbol parameter is required')}, status=status.HTTP_400_BAD_REQUEST)
+        existing = cache.get(_ai_result_key(sym))
+        if not existing:
+            return Response({'error': _('No cached summary for this symbol')}, status=status.HTTP_404_NOT_FOUND)
+        return Response(existing)

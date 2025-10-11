@@ -266,6 +266,9 @@
                                     <i class="fas fa-bookmark me-2"></i>{% trans "Save" %}
                                 </button>
                             {% endif %}
+                            <button id="ai-summary-btn" class="btn btn-warning text-dark" data-symbol="{{ symbol }}">
+                                <i class="fas fa-robot me-2"></i>{% trans "AI Summary" %}
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -320,6 +323,28 @@
             </div>
         </div>
         {% endif %}
+
+        <!-- AI Summary Result Placeholder -->
+        <div id="ai-summary-card" class="row" style="display:none;">
+            <div class="col-12">
+                <div class="card mt-3">
+                    <div class="card-header d-flex align-items-center">
+                        <i class="fas fa-robot me-2"></i>
+                        <h5 class="mb-0">{% trans "AI Summary" %}</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="ai-summary-loading" class="d-flex align-items-center">
+                            <div class="spinner-border text-warning me-3" role="status"></div>
+                            <div>
+                                <div id="ai-summary-status" class="fw-semibold">{% trans "Preparing analysis..." %}</div>
+                                <small class="text-muted">{% trans "This may take up to 10-15 seconds on first run. Cached for 24h thereafter." %}</small>
+                            </div>
+                        </div>
+                        <div id="ai-summary-content" style="display:none;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
         
         <!-- Price Chart -->
         {% if prices %}
@@ -358,48 +383,6 @@
         </div>
         {% endif %}
         
-        <!-- Price Table -->
-        {% if prices %}
-        <div class="row">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0">
-                            <i class="fas fa-table me-2"></i>{% trans "Recent Prices" %}
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-striped">
-                                <thead>
-                                    <tr>
-                                        <th>{% trans "Date" %}</th>
-                                        <th>{% trans "Open" %}</th>
-                                        <th>{% trans "High" %}</th>
-                                        <th>{% trans "Low" %}</th>
-                                        <th>{% trans "Close" %}</th>
-                                        <th>{% trans "Volume" %}</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for price in prices|slice:":20" %}
-                                    <tr>
-                                        <td>{{ price.date|date:"M j, Y" }}</td>
-                                        <td>${{ price.price|floatformat:2|default:"N/A" }}</td>
-                                        <td>${{ price.price|floatformat:2|default:"N/A" }}</td>
-                                        <td>${{ price.price|floatformat:2|default:"N/A" }}</td>
-                                        <td>${{ price.price|floatformat:2|default:"N/A" }}</td>
-                                        <td>{{ price.volume|floatformat:0|default:"N/A" }}</td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% endif %}
         
         <!-- Commodity Price Chart JavaScript -->
         {% if is_commodity and prices %}
@@ -579,6 +562,9 @@
                                     <i class="fas fa-bookmark me-2"></i>{% trans "Save" %}
                                 </button>
                             {% endif %}
+                            <button id="ai-summary-btn" class="btn btn-warning text-dark" data-symbol="{{ symbol }}">
+                                <i class="fas fa-robot me-2"></i>{% trans "AI Summary" %}
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -651,6 +637,28 @@
             </div>
         </div>
         {% endif %}
+
+        <!-- AI Summary Result Placeholder -->
+        <div id="ai-summary-card" class="row" style="display:none;">
+            <div class="col-12">
+                <div class="card mt-3">
+                    <div class="card-header d-flex align-items-center">
+                        <i class="fas fa-robot me-2"></i>
+                        <h5 class="mb-0">{% trans "AI Summary" %}</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="ai-summary-loading" class="d-flex align-items-center">
+                            <div class="spinner-border text-warning me-3" role="status"></div>
+                            <div>
+                                <div id="ai-summary-status" class="fw-semibold">{% trans "Preparing analysis..." %}</div>
+                                <small class="text-muted">{% trans "This may take up to 10-15 seconds on first run. Cached for 24h thereafter." %}</small>
+                            </div>
+                        </div>
+                        <div id="ai-summary-content" style="display:none;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
         
         <!-- Price Chart -->
         {% if prices %}
@@ -689,48 +697,6 @@
         </div>
         {% endif %}
         
-        <!-- Price Table -->
-        {% if prices %}
-        <div class="row">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0">
-                            <i class="fas fa-table me-2"></i>{% trans "Recent Prices" %}
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-striped">
-                                <thead>
-                                    <tr>
-                                        <th>{% trans "Date" %}</th>
-                                        <th>{% trans "Open" %}</th>
-                                        <th>{% trans "High" %}</th>
-                                        <th>{% trans "Low" %}</th>
-                                        <th>{% trans "Close" %}</th>
-                                        <th>{% trans "Volume" %}</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for price in prices|slice:":20" %}
-                                    <tr>
-                                        <td>{{ price.timestamp|date:"M j, Y" }}</td>
-                                        <td>{{ price.open_price_formatted }}</td>
-                                        <td>{{ price.high_price_formatted }}</td>
-                                        <td>{{ price.low_price_formatted }}</td>
-                                        <td>{{ price.close_price_formatted }}</td>
-                                        <td>{{ price.volume|floatformat:0|default:"N/A" }}</td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% endif %}
         
         <!-- Cryptocurrency Price Chart JavaScript -->
         {% if is_cryptocurrency and prices %}
@@ -1131,6 +1097,9 @@
                                     <i class="fas fa-bookmark me-2"></i>{% trans "Save" %}
                                 </button>
                             {% endif %}
+                            <button id="ai-summary-btn" class="btn btn-warning text-dark" data-symbol="{{ symbol }}">
+                                <i class="fas fa-robot me-2"></i>{% trans "AI Summary" %}
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -1179,6 +1148,28 @@
             </div>
         </div>
         {% endif %}
+
+        <!-- AI Summary Result Placeholder -->
+        <div id="ai-summary-card" class="row" style="display:none;">
+            <div class="col-12">
+                <div class="card mt-3">
+                    <div class="card-header d-flex align-items-center">
+                        <i class="fas fa-robot me-2"></i>
+                        <h5 class="mb-0">{% trans "AI Summary" %}</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="ai-summary-loading" class="d-flex align-items-center">
+                            <div class="spinner-border text-warning me-3" role="status"></div>
+                            <div>
+                                <div id="ai-summary-status" class="fw-semibold">{% trans "Preparing analysis..." %}</div>
+                                <small class="text-muted">{% trans "This may take up to 10-15 seconds on first run. Cached for 24h thereafter." %}</small>
+                            </div>
+                        </div>
+                        <div id="ai-summary-content" style="display:none;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
         
         <!-- Fundamentals -->
         {% if fundamentals %}
@@ -1272,48 +1263,6 @@
         </div>
         {% endif %}
         
-        <!-- Price Table -->
-        {% if prices %}
-        <div class="row">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0">
-                            <i class="fas fa-table me-2"></i>{% trans "Recent Prices" %}
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-striped">
-                                <thead>
-                                    <tr>
-                                        <th>{% trans "Date" %}</th>
-                                        <th>{% trans "Open" %}</th>
-                                        <th>{% trans "High" %}</th>
-                                        <th>{% trans "Low" %}</th>
-                                        <th>{% trans "Close" %}</th>
-                                        <th>{% trans "Volume" %}</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for price in prices|slice:":20" %}
-                                    <tr>
-                                        <td>{{ price.date|date:"M j, Y" }}</td>
-                                        <td>{{ price.open_price_formatted }}</td>
-                                        <td>{{ price.high_price_formatted }}</td>
-                                        <td>{{ price.low_price_formatted }}</td>
-                                        <td>{{ price.close_price_formatted }}</td>
-                                        <td>{{ price.volume|floatformat:0 }}</td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% endif %}
         {% endif %}
     </div>
 </div>
@@ -1490,6 +1439,102 @@ if (document.readyState === 'loading') {
 }
 </script>
 {% endif %}
+
+<script>
+(function(){
+  function startAISummary(symbol){
+    const card = document.getElementById('ai-summary-card');
+    const loading = document.getElementById('ai-summary-loading');
+    const content = document.getElementById('ai-summary-content');
+    const statusEl = document.getElementById('ai-summary-status');
+    if(card){ card.style.display = 'block'; }
+    if(loading){ loading.style.display = 'flex'; }
+    if(content){ content.style.display = 'none'; content.innerHTML=''; }
+    if(statusEl){ statusEl.textContent = '{{ _('Preparing analysis...') }}'; }
+
+    // Try cached summary first
+    fetch('/api/v1/ai/summary/' + encodeURIComponent(symbol))
+      .then(function(r){ if(r.ok) return r.json(); throw new Error('no-cache'); })
+      .then(function(result){
+        if(result && result.summary){
+          if(loading) loading.style.display = 'none';
+          if(content){ content.style.display = 'block'; content.innerHTML = renderAISummary(result.summary); }
+        } else {
+          throw new Error('no-cache');
+        }
+      })
+      .catch(function(){
+        // Start background job
+        fetch('/api/v1/ai/summary/start?symbol=' + encodeURIComponent(symbol), {method: 'POST'})
+          .then(function(r){ return r.json(); })
+          .then(function(body){
+            if(!body.job_id){ throw new Error('no job'); }
+            pollStatus(body.job_id, symbol, statusEl, loading, content);
+          })
+          .catch(function(){
+            if(statusEl) statusEl.textContent = '{{ _('Failed to start AI analysis') }}';
+          });
+      });
+  }
+
+  function pollStatus(jobId, symbol, statusEl, loading, content){
+    var messages = [
+      '{{ _('Identifying asset...') }}',
+      '{{ _('Fetching market data...') }}',
+      '{{ _('Computing metrics...') }}',
+      '{{ _('Summarizing with AI...') }}'
+    ];
+    var i = 0;
+    var interval = setInterval(function(){
+      fetch('/api/v1/ai/summary/status?job_id=' + encodeURIComponent(jobId) + '&symbol=' + encodeURIComponent(symbol))
+        .then(function(r){ return r.json(); })
+        .then(function(body){
+          if(body.status === 'completed' && body.result){
+            clearInterval(interval);
+            if(loading) loading.style.display = 'none';
+            if(content){ content.style.display = 'block'; content.innerHTML = renderAISummary(body.result.summary || ''); }
+          } else if(body.status === 'completed' && !body.result) {
+            // Try to fetch the cached result explicitly (race condition fallback)
+            fetch('/api/v1/ai/summary/' + encodeURIComponent(symbol))
+              .then(function(r){ if(r.ok) return r.json(); throw new Error('no-cache'); })
+              .then(function(res){
+                clearInterval(interval);
+                if(loading) loading.style.display = 'none';
+                if(content){ content.style.display = 'block'; content.innerHTML = renderAISummary(res.summary || ''); }
+              })
+              .catch(function(){
+                if(statusEl) statusEl.textContent = '{{ _('AI analysis failed. Please try again later.') }}';
+                clearInterval(interval);
+              });
+          } else if(body.status === 'failed') {
+            clearInterval(interval);
+            if(statusEl) statusEl.textContent = '{{ _('AI analysis failed. Please try again later.') }}';
+          } else {
+            if(statusEl){ statusEl.textContent = messages[i % messages.length]; i++; }
+          }
+        })
+        .catch(function(){ /* ignore transient errors */ });
+    }, 1200);
+  }
+
+  function renderAISummary(text){
+    // Basic formatting: convert newlines to paragraphs
+    var safe = (text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    var parts = safe.split(/\n{2,}/);
+    return parts.map(function(p){ return '<p>' + p.replace(/\n/g, '<br>') + '</p>'; }).join('');
+  }
+
+  document.addEventListener('DOMContentLoaded', function(){
+    var btn = document.getElementById('ai-summary-btn');
+    if(btn){
+      btn.addEventListener('click', function(){
+        var symbol = btn.getAttribute('data-symbol');
+        startAISummary(symbol);
+      });
+    }
+  });
+})();
+</script>
 
 {% if user.is_authenticated %}
 <script>

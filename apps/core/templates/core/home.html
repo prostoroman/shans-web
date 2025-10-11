@@ -424,7 +424,14 @@ class MainSymbolSearch {
         this.searchInput.addEventListener('blur', () => {
             // Delay hiding to allow clicking on results
             setTimeout(() => {
-                this.hideResults();
+                // Check if focus moved to a filter button or result item
+                const activeElement = document.activeElement;
+                if (!activeElement || 
+                    (!activeElement.closest('#symbolDropdownContainer') && 
+                     !activeElement.classList.contains('filter-btn') &&
+                     !activeElement.closest('.search-result-item'))) {
+                    this.hideResults();
+                }
             }, 200);
         });
         
@@ -455,6 +462,10 @@ class MainSymbolSearch {
         if (this.searchTimeout) {
             clearTimeout(this.searchTimeout);
         }
+        
+        // Clear exchange filters immediately when starting a new search
+        this.currentFilter = 'all';
+        this.clearExchangeFilters();
         
         if (this.currentSearchQuery.length < 2) {
             this.showPlaceholder();
@@ -540,6 +551,27 @@ class MainSymbolSearch {
         });
     }
     
+    clearExchangeFilters() {
+        const filterButtons = document.getElementById('filterButtons');
+        filterButtons.innerHTML = '';
+        
+        // Add "All" button as default
+        const allButton = document.createElement('button');
+        allButton.type = 'button';
+        allButton.className = 'filter-btn active';
+        allButton.textContent = 'All';
+        allButton.dataset.exchange = 'all';
+        allButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.filterByExchange('all');
+        });
+        filterButtons.appendChild(allButton);
+        
+        // Hide filters until new results arrive
+        this.searchFilters.style.display = 'none';
+    }
+    
     createExchangeFilters(exchanges) {
         const filterButtons = document.getElementById('filterButtons');
         filterButtons.innerHTML = '';
@@ -550,7 +582,11 @@ class MainSymbolSearch {
         allButton.className = 'filter-btn active';
         allButton.textContent = 'All';
         allButton.dataset.exchange = 'all';
-        allButton.addEventListener('click', () => this.filterByExchange('all'));
+        allButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.filterByExchange('all');
+        });
         filterButtons.appendChild(allButton);
         
         // Add exchange-specific buttons
@@ -560,7 +596,11 @@ class MainSymbolSearch {
             button.className = 'filter-btn';
             button.textContent = exchange;
             button.dataset.exchange = exchange;
-            button.addEventListener('click', () => this.filterByExchange(exchange));
+            button.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.filterByExchange(exchange);
+            });
             filterButtons.appendChild(button);
         });
         
@@ -581,7 +621,17 @@ class MainSymbolSearch {
             ? this.allResults 
             : this.allResults.filter(result => (result.exchange || 'Other') === exchange);
         
-        this.displayResults(filteredResults);
+        this.displayFilteredResults(filteredResults);
+    }
+    
+    displayFilteredResults(filteredResults) {
+        this.searchResultsContent.innerHTML = '';
+        
+        // Display filtered results without recreating exchange filters
+        filteredResults.forEach(result => {
+            const item = this.createResultItem(result);
+            this.searchResultsContent.appendChild(item);
+        });
     }
     
     createResultItem(result) {
@@ -613,7 +663,11 @@ class MainSymbolSearch {
         
         this.searchInput.value = '';
         this.hideResults();
-        this.searchInput.focus();
+        
+        // Focus back to search input after a brief delay to ensure dropdown is closed
+        setTimeout(() => {
+            this.searchInput.focus();
+        }, 50);
     }
     
     displaySelectedSymbol(symbol) {

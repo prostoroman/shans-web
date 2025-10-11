@@ -480,6 +480,57 @@ def debug_compare(request, symbols=None):
         return render(request, 'markets/debug_compare.html', context)
 
 
+def detect_base_currency_from_symbol(symbol):
+    """Detect base currency from symbol pattern."""
+    symbol_upper = symbol.upper()
+    
+    # Forex pairs (6 characters: EURUSD, GBPUSD, etc.)
+    if len(symbol_upper) == 6:
+        base_currency = symbol_upper[:3]
+        
+        # Common forex base currencies
+        forex_currencies = [
+            'EUR', 'GBP', 'JPY', 'CHF', 'AUD', 'CAD', 'NZD', 'RUB', 
+            'CNY', 'INR', 'BRL', 'MXN', 'KRW', 'SGD', 'HKD', 'NOK', 
+            'SEK', 'DKK', 'PLN', 'CZK', 'HUF', 'TRY', 'ZAR'
+        ]
+        
+        if base_currency in forex_currencies:
+            return base_currency
+    
+    # Exchange suffixes
+    exchange_currency_map = {
+        '.L': 'GBP',      # London Stock Exchange
+        '.PA': 'EUR',     # Paris Stock Exchange
+        '.F': 'EUR',      # Frankfurt Stock Exchange
+        '.BR': 'EUR',     # Brussels Stock Exchange
+        '.AS': 'EUR',     # Amsterdam Stock Exchange
+        '.MI': 'EUR',     # Milan Stock Exchange
+        '.VI': 'EUR',     # Vienna Stock Exchange
+        '.ST': 'SEK',     # Stockholm Stock Exchange
+        '.OL': 'NOK',     # Oslo Stock Exchange
+        '.CO': 'DKK',     # Copenhagen Stock Exchange
+        '.HE': 'EUR',     # Helsinki Stock Exchange
+        '.LS': 'EUR',     # Lisbon Stock Exchange
+        '.MC': 'EUR',     # Madrid Stock Exchange
+        '.AT': 'EUR',     # Athens Stock Exchange
+        '.IR': 'EUR',     # Irish Stock Exchange
+        '.SI': 'SGD',     # Singapore Exchange
+        '.AX': 'AUD',     # Australian Securities Exchange
+        '.TO': 'CAD',     # Toronto Stock Exchange
+        '.MX': 'MXN',     # Mexican Stock Exchange
+        '.SA': 'BRL',     # Brazilian Stock Exchange
+        '.ME': 'RUB'      # Moscow Stock Exchange
+    }
+    
+    for suffix, currency in exchange_currency_map.items():
+        if symbol_upper.endswith(suffix):
+            return currency
+    
+    # Default to USD for US exchanges and unknown
+    return 'USD'
+
+
 def compare(request, symbols=None):
     """Enhanced asset comparison page supporting multiple asset types."""
     # Get symbols from URL or query parameter
@@ -487,7 +538,7 @@ def compare(request, symbols=None):
         symbols = request.GET.get('symbols', '')
     
     # Get comparison parameters
-    base_currency = request.GET.get('base_currency', 'USD').upper()
+    base_currency = request.GET.get('base_currency', '').upper()
     include_dividends = True  # Always include dividends
     period = request.GET.get('period', '1Y')
     normalize_mode = request.GET.get('normalize_mode', 'percent_change')
@@ -495,7 +546,7 @@ def compare(request, symbols=None):
     # Validate base currency
     from .smart_currency_converter import get_smart_currency_converter
     currency_converter = get_smart_currency_converter()
-    if not currency_converter.is_currency_supported(base_currency):
+    if base_currency and not currency_converter.is_currency_supported(base_currency):
         context = {
             'title': _('Compare Assets'),
             'error': _('Unsupported currency: {}').format(base_currency),
@@ -521,6 +572,14 @@ def compare(request, symbols=None):
     
     # Parse symbols
     symbol_list = [s.strip().upper() for s in symbols.split(',') if s.strip()]
+    
+    # Auto-detect base currency from first symbol if not provided
+    if not base_currency and symbol_list:
+        base_currency = detect_base_currency_from_symbol(symbol_list[0])
+    
+    # Default to USD if still no currency detected
+    if not base_currency:
+        base_currency = 'USD'
     
     if len(symbol_list) < 2:
         context = {

@@ -674,6 +674,7 @@ class SymbolSearch {
         this.searchInput.addEventListener('keydown', (e) => this.handleKeyDown(e));
         this.searchInput.addEventListener('focus', () => {
             // Always show dropdown when user focuses on search input
+            this.showPlaceholder();
             this.showResults();
         });
         // Removed blur event listener - it was causing conflicts
@@ -749,6 +750,10 @@ class SymbolSearch {
         if (this.searchTimeout) {
             clearTimeout(this.searchTimeout);
         }
+        
+        // Clear exchange filters immediately when starting a new search
+        this.currentFilter = 'all';
+        this.clearExchangeFilters();
         
         // Show placeholder if query is too short
         if (this.currentSearchQuery.length < 2) {
@@ -1269,6 +1274,25 @@ class SymbolSearch {
         };
         
         return shortNames[fullName] || fullName.split(' ').map(word => word.charAt(0)).join('').substring(0, 4);
+    }
+    
+    clearExchangeFilters() {
+        const filterButtons = document.getElementById('filterButtons');
+        filterButtons.innerHTML = '';
+        
+        // Add "All" button as default
+        const allButton = document.createElement('button');
+        allButton.type = 'button';
+        allButton.className = 'filter-btn active';
+        allButton.textContent = 'All';
+        allButton.setAttribute('data-exchange', 'all');
+        filterButtons.appendChild(allButton);
+        
+        // Hide filters until new results arrive
+        this.searchFilters.style.display = 'none';
+        
+        // Reset exchange filters flag
+        this.exchangeFiltersUpdated = false;
     }
     
     async updateExchangeFilters(results) {

@@ -3,7 +3,21 @@ API URL configuration for markets app.
 """
 
 from django.urls import path
-from .api import MarketAPIView, CompareAPIView, HistoryAPIView, ETFHoldingsAPIView, CommoditiesAPIView, CommoditiesSearchAPIView, ForexAPIView, ForexSearchAPIView, SymbolSearchAPIView, ExchangeAPIView
+from .api import (
+    MarketAPIView,
+    CompareAPIView,
+    HistoryAPIView,
+    ETFHoldingsAPIView,
+    CommoditiesAPIView,
+    CommoditiesSearchAPIView,
+    ForexAPIView,
+    ForexSearchAPIView,
+    SymbolSearchAPIView,
+    ExchangeAPIView,
+    AISummaryStartAPIView,
+    AISummaryStatusAPIView,
+    AISummaryGetAPIView,
+)
 
 urlpatterns = [
     # Backward-compatible legacy endpoints expected by tests
@@ -23,4 +37,8 @@ urlpatterns = [
     path('v1/search/', SymbolSearchAPIView.as_view(), name='symbol_search_api'),
     # Exchange data
     path('v1/exchanges/', ExchangeAPIView.as_view(), name='exchange_api'),
+    # AI summary endpoints
+    path('v1/ai/summary/start', AISummaryStartAPIView.as_view(), name='ai_summary_start'),
+    path('v1/ai/summary/status', AISummaryStatusAPIView.as_view(), name='ai_summary_status'),
+    path('v1/ai/summary/<str:symbol>/', AISummaryGetAPIView.as_view(), name='ai_summary_get'),
 ]

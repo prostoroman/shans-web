@@ -735,6 +735,31 @@ def get_dividend_history(symbol: str) -> List[Dict[str, Any]]:
         return []
 
 
+def get_stock_splits(symbol: str) -> List[Dict[str, Any]]:
+    """
+    Get stock split history for a symbol.
+    Endpoint: /api/v3/historical-price-full/stock_split/{symbol}
+    """
+    settings = _get_settings()
+    ttl = settings.CACHE_TTL_EOD
+    cache_key = f"fmp:splits:{symbol.upper()}"
+
+    def loader():
+        data = _http_get_json(f"historical-price-full/stock_split/{symbol}")
+        # API can respond with { symbol, historical: [...] } or list
+        if isinstance(data, dict) and "historical" in data:
+            return data.get("historical", [])
+        if isinstance(data, list):
+            return data
+        return []
+
+    try:
+        return _cached_call(cache_key, ttl, loader) or []
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Error getting stock splits for {symbol}: {e}")
+        return []
+
+
 def get_earnings_calendar(symbol: str) -> List[Dict[str, Any]]:
     """
     Get earnings calendar for a symbol.
@@ -867,6 +892,150 @@ def get_risk_free_yield(tenor: str = "3m") -> Optional[float]:
         logger.warning(f"Risk-free yield fetch failed, falling back to DEFAULT_RF: {e}")
     settings = _get_settings()
     return getattr(settings, "DEFAULT_RF", 0.03)
+
+
+# ----------------------------- New helper fetchers -----------------------------
+
+def get_analyst_estimates(symbol: str) -> List[Dict[str, Any]]:
+    """
+    v4 analyst estimates: https://financialmodelingprep.com/api/v4/analyst-estimates?symbol={symbol}
+    Cached for EOD horizon.
+    """
+    settings = _get_settings()
+    ttl = settings.CACHE_TTL_EOD
+    cache_key = f"fmp:v4:analyst_estimates:{symbol.upper()}"
+
+    def loader():
+        data = _http_get_json("analyst-estimates", {"symbol": symbol}, use_stable=False)
+        return data or []
+
+    try:
+        return _cached_call(cache_key, ttl, loader) or []
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Error getting analyst estimates for {symbol}: {e}")
+        return []
+
+
+def get_price_targets(symbol: str) -> Dict[str, Any]:
+    """
+    v4 price target summary: https://financialmodelingprep.com/api/v4/price-target-summary?symbol={symbol}
+    Cached for EOD horizon. Returns a compact dict.
+    """
+    settings = _get_settings()
+    ttl = settings.CACHE_TTL_EOD
+    cache_key = f"fmp:v4:price_targets:{symbol.upper()}"
+
+    def loader():
+        data = _http_get_json("price-target-summary", {"symbol": symbol}, use_stable=False)
+        if isinstance(data, list) and data:
+            item = data[0]
+        elif isinstance(data, dict):
+            item = data
+        else:
+            return {}
+        return {
+            "symbol": item.get("symbol", symbol),
+            "targetLow": item.get("targetLow"),
+            "targetHigh": item.get("targetHigh"),
+            "targetMean": item.get("targetMean"),
+            "targetMedian": item.get("targetMedian"),
+            "numberAnalystOpinions": item.get("numberAnalystOpinions"),
+            "lastUpdated": item.get("lastUpdated"),
+        }
+
+    try:
+        return _cached_call(cache_key, ttl, loader) or {}
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Error getting price targets for {symbol}: {e}")
+        return {}
+
+
+def get_company_rating(symbol: str) -> Dict[str, Any]:
+    """
+    v3 company rating: https://financialmodelingprep.com/api/v3/rating/{symbol}
+    Cached for EOD horizon.
+    """
+    settings = _get_settings()
+    ttl = settings.CACHE_TTL_EOD
+    cache_key = f"fmp:v3:rating:{symbol.upper()}"
+
+    def loader():
+        data = _http_get_json(f"rating/{symbol}")
+        if isinstance(data, list) and data:
+            return data[0]
+        if isinstance(data, dict):
+            return data
+        return {}
+
+    try:
+        return _cached_call(cache_key, ttl, loader) or {}
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Error getting rating for {symbol}: {e}")
+        return {}
+
+
+def get_market_risk_premium(country: str = "US") -> Optional[float]:
+    """
+    v4 market risk premium by country: https://financialmodelingprep.com/api/v4/market-risk-premium
+    Returns premium for given country code when available; cached for EOD horizon.
+    """
+    settings = _get_settings()
+    ttl = settings.CACHE_TTL_EOD
+    cache_key = f"fmp:v4:mrp:{country.upper()}"
+
+    def loader():
+        data = _http_get_json("market-risk-premium", use_stable=False)
+        if isinstance(data, list):
+            for row in data:
+                try:
+                    if isinstance(row, dict) and row.get("country") and row.get("country").upper() == country.upper():
+                        val = row.get("marketRiskPremium") or row.get("value")
+                        return float(val) if val is not None else None
+                except Exception:
+                    continue
+        return None
+
+    try:
+        return _cached_call(cache_key, ttl, loader)
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Error getting market risk premium for {country}: {e}")
+        return None
+
+
+def get_stock_news(symbol: str, limit: int = 10) -> List[Dict[str, Any]]:
+    """
+    v3 stock news: https://financialmodelingprep.com/api/v3/stock_news?tickers={symbol}&limit=10
+    Cached briefly (intraday) since news changes more often.
+    """
+    settings = _get_settings()
+    ttl = settings.CACHE_TTL_INTRADAY
+    cache_key = f"fmp:v3:stock_news:{symbol.upper()}:{limit}"
+
+    def loader():
+        data = _http_get_json("stock_news", {"tickers": symbol, "limit": limit})
+        if isinstance(data, list):
+            # keep compact list
+            out: List[Dict[str, Any]] = []
+            for item in data[:limit]:
+                if not isinstance(item, dict):
+                    continue
+                out.append({
+                    "symbol": item.get("symbol", symbol),
+                    "title": item.get("title"),
+                    "text": item.get("text"),
+                    "site": item.get("site"),
+                    "url": item.get("url"),
+                    "image": item.get("image"),
+                    "publishedDate": item.get("publishedDate"),
+                })
+            return out
+        return []
+
+    try:
+        return _cached_call(cache_key, ttl, loader) or []
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Error getting stock news for {symbol}: {e}")
+        return []
 
 
 def quote_short(symbols: List[str]) -> List[Dict[str, Any]]:
