@@ -12,9 +12,7 @@ from apps.markets import views
 import os
 
 def favicon_view(request):
-    print("Favicon view called!")  # Debug print
     favicon_path = os.path.join(settings.STATICFILES_DIRS[0], 'images', 'favicon.ico')
-    print(f"Favicon path: {favicon_path}")  # Debug print
     return FileResponse(open(favicon_path, 'rb'), content_type='image/x-icon')
 
 urlpatterns = [

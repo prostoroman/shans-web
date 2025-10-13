@@ -333,6 +333,7 @@ class MainSymbolSearch {
         this.currentFilter = 'all';
         this.allResults = [];
         this.currentTypeFilter = 'all';
+        this.isFilterButtonClick = false;
         try {
             const msData = document.getElementById('mostSearchedData');
             this.mostSearched = msData ? JSON.parse(msData.textContent || '{}') : {};
@@ -373,11 +374,18 @@ class MainSymbolSearch {
         this.searchInput.addEventListener('blur', () => {
             // Delay hiding to allow clicking on results
             setTimeout(() => {
+                // Don't close if a filter button was just clicked
+                if (this.isFilterButtonClick) {
+                    this.isFilterButtonClick = false;
+                    return;
+                }
+                
                 // Check if focus moved to a filter button or result item
                 const activeElement = document.activeElement;
                 if (!activeElement || 
                     (!activeElement.closest('#symbolDropdownContainer') && 
                      !activeElement.classList.contains('filter-btn') &&
+                     !activeElement.closest('.filter-btn') &&
                      !activeElement.closest('.search-result-item'))) {
                     this.hideResults();
                 }
@@ -392,7 +400,10 @@ class MainSymbolSearch {
         
         // Click outside to close dropdown
         document.addEventListener('click', (e) => {
-            if (!e.target.closest('#symbolDropdownContainer')) {
+            // Don't close if clicking inside the dropdown container or on filter buttons
+            if (!e.target.closest('#symbolDropdownContainer') && 
+                !e.target.classList.contains('filter-btn') &&
+                !e.target.closest('.filter-btn')) {
                 this.hideResults();
             }
         });
@@ -441,6 +452,10 @@ class MainSymbolSearch {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                // Set flag to prevent blur from closing dropdown
+                this.isFilterButtonClick = true;
+                // Prevent blur event from firing on search input
+                this.searchInput.focus();
                 this.currentTypeFilter = t.key;
                 this.createTypeFilters();
                 this.displayMostSearchedItems();
@@ -594,6 +609,10 @@ class MainSymbolSearch {
         allButton.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
+            // Set flag to prevent blur from closing dropdown
+            this.isFilterButtonClick = true;
+            // Prevent blur event from firing on search input
+            this.searchInput.focus();
             this.filterByExchange('all');
         });
         filterButtons.appendChild(allButton);
@@ -615,6 +634,10 @@ class MainSymbolSearch {
         allButton.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
+            // Set flag to prevent blur from closing dropdown
+            this.isFilterButtonClick = true;
+            // Prevent blur event from firing on search input
+            this.searchInput.focus();
             this.filterByExchange('all');
         });
         filterButtons.appendChild(allButton);
@@ -629,6 +652,10 @@ class MainSymbolSearch {
             button.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                // Set flag to prevent blur from closing dropdown
+                this.isFilterButtonClick = true;
+                // Prevent blur event from firing on search input
+                this.searchInput.focus();
                 this.filterByExchange(exchange);
             });
             filterButtons.appendChild(button);
