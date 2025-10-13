@@ -303,6 +303,15 @@
         justify-content: center;
     }
 }
+/* Homepage-only sticky footer */
+.home-fixed-footer {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    z-index: 1030;
+}
 </style>
 {% endblock %}
 
@@ -718,7 +727,27 @@ class MainSymbolSearch {
             this.updateActionButtons();
         }
         
+        // Clear search state, results, filters, and loading when a symbol is selected
+        this.currentSearchQuery = '';
         this.searchInput.value = '';
+
+        // Abort any in-flight search and clear pending debounce
+        if (this.currentSearchRequest) {
+            this.currentSearchRequest.abort();
+            this.currentSearchRequest = null;
+        }
+        if (this.searchTimeout) {
+            clearTimeout(this.searchTimeout);
+            this.searchTimeout = null;
+        }
+
+        // Reset results and filters UI
+        this.allResults = [];
+        this.currentFilter = 'all';
+        this.clearExchangeFilters();
+        this.searchResultsContent.innerHTML = '';
+        this.hideMostSearched();
+        this.hideLoading();
         this.hideResults();
         
         // Focus back to search input after a brief delay to ensure dropdown is closed
@@ -898,6 +927,17 @@ function removeSymbol(symbol) {
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
     window.mainSymbolSearch = new MainSymbolSearch();
+
+    // Homepage sticky footer: fix footer and prevent content overlap
+    const footerEl = document.querySelector('footer');
+    if (footerEl) {
+        footerEl.classList.add('home-fixed-footer');
+        const updateBodyPadding = () => {
+            document.body.style.paddingBottom = `${footerEl.offsetHeight}px`;
+        };
+        updateBodyPadding();
+        window.addEventListener('resize', updateBodyPadding);
+    }
 });
 
 // Market Cap Filter Function

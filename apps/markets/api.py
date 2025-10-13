@@ -401,6 +401,13 @@ class SymbolSearchAPIView(APIView):
     def get(self, request):
         query = request.GET.get('q', '').strip()
         limit = min(int(request.GET.get('limit', 20)), 50)  # Cap at 50 results
+        enrich_param = str(request.GET.get('enrich', 'true')).lower()
+        enrich = enrich_param not in ('0', 'false', 'no')
+        try:
+            enrich_limit = int(request.GET.get('enrich_limit', 5))
+        except Exception:
+            enrich_limit = 5
+        enrich_limit = max(0, min(enrich_limit, limit))
         
         if not query or len(query) < 2:
             return Response({
@@ -464,25 +471,32 @@ class SymbolSearchAPIView(APIView):
                             elif symbol.upper().startswith(query_upper):
                                 score = max(score, 90)
                             
-                            # Get additional profile data for stocks/ETFs
-                            if item.get('type') in ['stock', 'etf']:
-                                try:
-                                    profile = fmp_client.get_profile(symbol)
-                                    if profile:
-                                        item['name'] = profile.get('companyName', item.get('name', ''))
-                                        item['currency'] = profile.get('currency', item.get('currency', 'USD'))
-                                        item['exchangeFullName'] = profile.get('exchange', item.get('exchange', ''))
-                                        item['exchange'] = profile.get('exchange', item.get('exchange', ''))
-                                        # Update asset type based on profile
-                                        if profile.get('isEtf') or profile.get('isFund'):
-                                            item['type'] = 'etf'
-                                        else:
-                                            item['type'] = 'stock'
-                                except Exception:
-                                    pass  # Use original data if profile lookup fails
-                            
+                            # Delay enrichment; we'll batch fetch profiles below
                             item['score'] = score
                             results.append(item)
+                    
+                    # Perform optional enrichment in batch for top-N only
+                    if enrich and results:
+                        # pick top candidates to enrich
+                        candidates = [r for r in results if r.get('type') in ['stock', 'etf']][:enrich_limit]
+                        symbols_to_enrich = [r.get('symbol') for r in candidates if r.get('symbol')]
+                        if symbols_to_enrich:
+                            try:
+                                profiles_map = fmp_client.get_profiles_batch(symbols_to_enrich)
+                            except Exception:
+                                profiles_map = {}
+                            for r in candidates:
+                                symu = str(r.get('symbol', '')).upper()
+                                profile = profiles_map.get(symu)
+                                if profile:
+                                    r['name'] = profile.get('companyName', r.get('name', ''))
+                                    r['currency'] = profile.get('currency', r.get('currency', 'USD'))
+                                    r['exchangeFullName'] = profile.get('exchange', r.get('exchange', ''))
+                                    r['exchange'] = profile.get('exchange', r.get('exchange', ''))
+                                    if profile.get('isEtf') or profile.get('isFund'):
+                                        r['type'] = 'etf'
+                                    else:
+                                        r['type'] = 'stock'
                             
                 except Exception as e:
                     logger.warning(f"Error in unified search for {query}: {e}")

@@ -9,6 +9,7 @@ import os
 import re
 import time
 import logging
+import hashlib
 from typing import Dict, List, Optional, Any, Callable, Tuple
 from datetime import datetime, date
 from django.db.models import Q
@@ -197,6 +198,64 @@ def get_profile(symbol: str) -> Optional[Dict[str, Any]]:
     except Exception as e:  # noqa: BLE001
         logger.error(f"Error getting profile for {symbol}: {e}")
         return None
+
+
+def get_profiles_batch(symbols: List[str]) -> Dict[str, Any]:
+    """
+    Fetch company profiles for multiple symbols in a single request when supported by the API.
+    Falls back to per-symbol profile lookups (which are cached) if batch is not available.
+
+    Args:
+        symbols: List of stock/ETF symbols
+
+    Returns:
+        Mapping of SYMBOL -> profile dict
+    """
+    if not symbols:
+        return {}
+
+    # Normalize and de-duplicate symbols, preserve a stable order for cache key
+    unique_symbols = sorted({str(s).upper() for s in symbols if s})
+
+    settings = _get_settings()
+    ttl = settings.CACHE_TTL_EOD
+    digest = hashlib.md5(
+        ("|".join(unique_symbols)).encode("utf-8")
+    ).hexdigest()
+    cache_key = f"fmp:profile_batch:{digest}"
+
+    def loader() -> Dict[str, Any]:
+        # Try a batch request first (many FMP endpoints accept comma-separated symbols)
+        try:
+            data = _http_get_json(f"profile/{','.join(unique_symbols)}")
+            profiles: Dict[str, Any] = {}
+            if isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict) and item.get("symbol"):
+                        profiles[str(item.get("symbol")).upper()] = item
+            elif isinstance(data, dict) and data.get("symbol"):
+                # Single object response when only one symbol
+                profiles[str(data.get("symbol")).upper()] = data
+            # If batch returned something usable, return it
+            if profiles:
+                return profiles
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"Batch profile fetch failed, falling back to per-symbol: {e}")
+
+        # Fallback to per-symbol (cached) calls
+        out: Dict[str, Any] = {}
+        for sym in unique_symbols:
+            prof = get_profile(sym)
+            if prof:
+                out[sym] = prof
+        return out
+
+    try:
+        result = _cached_call(cache_key, ttl, loader)
+        return result or {}
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Error getting batch profiles for {unique_symbols}: {e}")
+        return {}
 
 
 def get_price_series(symbol: str, start_date: Optional[str] = None, end_date: Optional[str] = None, include_dividends: bool = False) -> List[Dict[str, Any]]:
@@ -1732,22 +1791,70 @@ def get_cryptocurrency_price_history(symbol: str, days: int = 365) -> List[Dict[
         
         # Use the historical price EOD light endpoint for cryptocurrencies
         try:
-            data = _http_get_json(f"historical-price-eod/light", {
+            data = _http_get_json("historical-price-eod/light", {
                 "symbol": symbol,
                 "from": start_date.isoformat(),
                 "to": end_date.isoformat()
             }, use_stable=True)
             
-            if isinstance(data, list):
+            if isinstance(data, list) and data:
                 return data
-            elif isinstance(data, dict) and "historical" in data:
+            if isinstance(data, dict) and data.get("historical"):
                 return data["historical"]
-            
-            return []
-            
         except Exception as e:
-            logger.warning(f"Error fetching historical data for {symbol}: {e}")
-            return []
+            logger.warning(f"Error fetching crypto light history for {symbol}: {e}")
+        
+        # Fallback 1: try regular historical-price-full which often works for crypto
+        try:
+            params: Dict[str, Any] = {
+                "from": start_date.isoformat(),
+                "to": end_date.isoformat()
+            }
+            data_full = _http_get_json(f"historical-price-full/{symbol}", params)
+            if isinstance(data_full, dict) and data_full.get("historical"):
+                return data_full.get("historical", [])
+            if isinstance(data_full, list) and data_full and isinstance(data_full[0], dict) and data_full[0].get("historical"):
+                return data_full[0].get("historical", [])
+            if isinstance(data_full, list):
+                return data_full or []
+        except Exception as e:
+            logger.warning(f"Fallback historical-price-full failed for {symbol}: {e}")
+        
+        # Fallback 2: try v4 crypto candles if available (compact OHLC), then normalize
+        try:
+            candles = _http_get_json("v4/crypto-candles", {
+                "symbol": symbol,
+                "from": start_date.isoformat(),
+                "to": end_date.isoformat()
+            }, use_stable=False)
+            out: List[Dict[str, Any]] = []
+            if isinstance(candles, list):
+                for c in candles:
+                    if not isinstance(c, dict):
+                        continue
+                    # Accept either 'date' or 'timestamp' styles
+                    dt = c.get("date")
+                    if not dt and c.get("timestamp"):
+                        try:
+                            dt = datetime.fromtimestamp(int(c["timestamp"]) / 1000).strftime('%Y-%m-%d')
+                        except Exception:
+                            dt = None
+                    out.append({
+                        "date": dt,
+                        "open": c.get("open"),
+                        "high": c.get("high"),
+                        "low": c.get("low"),
+                        "close": c.get("close") or c.get("price"),
+                        "adjClose": c.get("adjClose") or c.get("close") or c.get("price"),
+                        "volume": c.get("volume")
+                    })
+            if out:
+                return out
+        except Exception as e:
+            logger.warning(f"Fallback v4 crypto-candles failed for {symbol}: {e}")
+        
+        # No data from all attempts
+        return []
 
     try:
         result = _cached_call(cache_key, ttl, loader)

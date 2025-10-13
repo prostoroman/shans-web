@@ -91,6 +91,17 @@ class ChartService:
         """Check if a symbol is actively trading to avoid unnecessary API calls."""
         symbol = asset.symbol
         
+        # Always treat cryptocurrencies as actively trading; do not cache them as non-trading
+        try:
+            if getattr(asset, 'asset_type', None) == AssetType.CRYPTOCURRENCY:
+                # If it was previously cached as non-trading, remove it to avoid stale skips
+                if symbol in self._non_trading_symbols:
+                    self._non_trading_symbols.discard(symbol)
+                return True
+        except Exception:
+            # If detection fails, fall through to regular checks
+            pass
+        
         # Check cache first
         if symbol in self._non_trading_symbols:
             return False
