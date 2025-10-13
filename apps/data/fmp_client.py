@@ -1213,42 +1213,55 @@ def get_most_searched_stocks(min_market_cap: float = 0) -> List[Dict[str, Any]]:
             return []
         
         # Filter for stocks only (exclude ETFs, trusts, etc.)
-        stocks = [item for item in stock_list if item.get('type') == 'stock']
+        all_stocks = [item for item in stock_list if item.get('type') == 'stock']
         
-        # Get symbols for batch quote requests
-        symbols = [stock['symbol'] for stock in stocks[:100]]  # Limit to 100 for API efficiency
+        # Prioritize US exchanges
+        us_exchanges = ['NASDAQ', 'NYSE', 'AMEX']
+        us_stocks = [stock for stock in all_stocks if stock.get('exchangeShortName') in us_exchanges]
+        other_stocks = [stock for stock in all_stocks if stock.get('exchangeShortName') not in us_exchanges]
+        
+        # Combine with US stocks first, then others
+        stocks = us_stocks + other_stocks
+        
+        # Get symbols for batch quote requests (limit to 50 for better performance with profile calls)
+        symbols = [stock['symbol'] for stock in stocks[:50]]
         
         # Get enhanced data for stocks
         enhanced_stocks = []
         
-        # Get quotes for price and change data
+        # Get profile data for price, change, and market cap
         if symbols:
             try:
-                # Batch quote request
-                quotes_data = _http_get_json("quote-short", {"symbol": ",".join(symbols)})
-                quotes_dict = {}
-                if isinstance(quotes_data, list):
-                    quotes_dict = {quote.get('symbol'): quote for quote in quotes_data}
-                
-                # Get market cap data
-                market_cap_data = _http_get_json("market-capitalization", {"symbol": ",".join(symbols)})
-                market_cap_dict = {}
-                if isinstance(market_cap_data, list):
-                    market_cap_dict = {mc.get('symbol'): mc for mc in market_cap_data}
+                # Get profile data for each symbol (profile endpoint works better than quote-short)
+                profiles_dict = {}
+                for symbol in symbols:
+                    try:
+                        profile_data = _http_get_json(f"profile/{symbol}")
+                        if isinstance(profile_data, list) and profile_data:
+                            profiles_dict[symbol] = profile_data[0]
+                        elif isinstance(profile_data, dict):
+                            profiles_dict[symbol] = profile_data
+                    except Exception as e:
+                        logger.debug(f"Error getting profile for {symbol}: {e}")
+                        continue
                 
                 # Combine data
                 for stock in stocks:
                     symbol = stock.get('symbol')
-                    quote = quotes_dict.get(symbol, {})
-                    market_cap_info = market_cap_dict.get(symbol, {})
+                    profile = profiles_dict.get(symbol, {})
                     
-                    # Calculate market cap
-                    market_cap = market_cap_info.get('marketCap')
-                    if not market_cap and quote.get('price') and quote.get('sharesOutstanding'):
+                    # Extract data from profile
+                    price = profile.get('price')
+                    market_cap = profile.get('mktCap')
+                    changes = profile.get('changes', 0)
+                    
+                    # Calculate change percentage if we have price and changes
+                    change_percentage = None
+                    if price and changes:
                         try:
-                            market_cap = float(quote['price']) * float(quote['sharesOutstanding'])
-                        except (ValueError, TypeError):
-                            market_cap = None
+                            change_percentage = (changes / (price - changes)) * 100
+                        except (ValueError, TypeError, ZeroDivisionError):
+                            change_percentage = None
                     
                     # Apply market cap filter
                     if min_market_cap > 0 and (not market_cap or market_cap < min_market_cap):
@@ -1260,16 +1273,16 @@ def get_most_searched_stocks(min_market_cap: float = 0) -> List[Dict[str, Any]]:
                     enhanced_stock = {
                         'symbol': symbol,
                         'name': stock.get('name', ''),
-                        'price': quote.get('price'),
-                        'change': quote.get('change'),
-                        'changePercentage': quote.get('changePercentage'),
+                        'price': price,
+                        'change': changes,
+                        'changePercentage': change_percentage,
                         'marketCap': market_cap,
                         'exchange': stock.get('exchangeShortName', stock.get('exchange', '')),
                         'type': stock.get('type', 'stock'),
                         'currency': currency,
-                        'volume': quote.get('volume'),
-                        'dayLow': quote.get('dayLow'),
-                        'dayHigh': quote.get('dayHigh'),
+                        'volume': profile.get('volAvg'),
+                        'dayLow': None,  # Profile doesn't have day low/high
+                        'dayHigh': None,
                     }
                     enhanced_stocks.append(enhanced_stock)
                     

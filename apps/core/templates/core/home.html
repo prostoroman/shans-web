@@ -14,7 +14,7 @@
         <div class="text-center mb-5">
             <h1 class="display-4 mb-3">{% trans "shans.ai" %}</h1>
             <p class="lead text-muted mb-4">
-                {% trans "Professional financial analysis and market insights" %}
+                {% trans "Invest Like Institutions — With AI on Your Side." %}
             </p>
         </div>
         
@@ -61,6 +61,14 @@
                                     <div class="search-results-content" id="searchResultsContent">
                                         <!-- Results will be populated here -->
                                     </div>
+                                    <!-- Most Searched Container inside dropdown -->
+                                    <div class="most-searched-container" id="mostSearchedContainer" style="display: none;">
+                                        <div class="most-searched-header d-flex justify-content-between align-items-center px-3 py-2 border-bottom bg-light">
+                                            <div class="fw-semibold">{% trans "Most Searched" %}</div>
+                                            <div class="filter-buttons" id="typeFilterButtons"></div>
+                                        </div>
+                                        <div class="most-searched-list" id="mostSearchedList"></div>
+                                    </div>
                                 </div>
                             </div>
                             
@@ -69,109 +77,16 @@
                         </div>
                     </div>
                     
-                    <!-- Action Button -->
-                    <div class="text-center">
+                    <!-- Action Buttons -->
+                    <div class="d-flex justify-content-center gap-2">
                         <button type="submit" class="btn btn-primary btn-lg px-5" id="analyzeButton">
                             <i class="fas fa-search me-2"></i><span id="buttonText">{% trans "Analyze" %}</span>
                         </button>
+                        <button type="button" class="btn btn-success btn-lg px-5 d-none" id="createPortfolioButton">
+                            <i class="fas fa-chart-pie me-2"></i>{% trans "Create Portfolio" %}
+                        </button>
                     </div>
                 </form>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Most Searched Stocks List Section -->
-<div class="row mt-5">
-    <div class="col-12">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h3>{% trans "Most Searched Stocks" %}</h3>
-            <div class="d-flex gap-2">
-                <select class="form-select form-select-sm" id="marketCapFilter" style="width: auto;">
-                    <option value="0">{% trans "All Market Caps" %}</option>
-                    <option value="1000000000">{% trans "Large Cap (>$1B)" %}</option>
-                    <option value="10000000000">{% trans "Mega Cap (>$10B)" %}</option>
-                    <option value="100000000000">{% trans "Ultra Cap (>$100B)" %}</option>
-                </select>
-                <button class="btn btn-outline-primary btn-sm" onclick="applyMarketCapFilter()">
-                    <i class="fas fa-filter me-1"></i>{% trans "Filter" %}
-                </button>
-            </div>
-        </div>
-        <div class="card">
-            <div class="card-body">
-                {% if most_searched_stocks %}
-                    <div class="table-responsive">
-                        <table class="table table-hover">
-                            <thead>
-                                <tr>
-                                    <th>{% trans "Symbol" %}</th>
-                                    <th>{% trans "Name" %}</th>
-                                    <th>{% trans "Price" %}</th>
-                                    <th>{% trans "Change" %}</th>
-                                    <th>{% trans "Market Cap" %}</th>
-                                    <th>{% trans "Exchange" %}</th>
-                                    <th>{% trans "Type" %}</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for item in most_searched_stocks %}
-                                <tr>
-                                    <td>
-                                        <a href="{% asset_info_url item.symbol %}" class="text-decoration-none fw-bold">
-                                            {{ item.symbol }}
-                                        </a>
-                                    </td>
-                                    <td>
-                                        <div class="text-truncate" style="max-width: 200px;" title="{{ item.name }}">
-                                            {{ item.name|default:"-" }}
-                                        </div>
-                                    </td>
-                                    <td>
-                                        {% if item.price %}
-                                            {{ item.price|format_currency:item.currency }}
-                                        {% else %}
-                                            -
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if item.changePercentage is not None %}
-                                            {{ item.changePercentage|format_percentage }}
-                                        {% else %}
-                                            -
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if item.marketCap %}
-                                            {{ item.marketCap|format_market_cap }}
-                                        {% else %}
-                                            -
-                                        {% endif %}
-                                    </td>
-                                    <td>{{ item.exchangeShortName|default:item.exchange|default:"-" }}</td>
-                                    <td>
-                                        <span class="badge bg-primary">{{ item.type|default:"stock" }}</span>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="text-center mt-3">
-                        <small class="text-muted">
-                            {% trans "Data provided by Financial Modeling Prep" %}
-                        </small>
-                    </div>
-                {% else %}
-                    <div class="text-center py-4">
-                        <p class="text-muted mb-0">
-                            {% trans "Unable to load most searched stocks data at this time." %}
-                        </p>
-                        <small class="text-muted">
-                            {% trans "Please try again later or check your API configuration." %}
-                        </small>
-                    </div>
-                {% endif %}
             </div>
         </div>
     </div>
@@ -331,6 +246,23 @@
     border-color: #007bff;
 }
 
+/* Most Searched styles */
+.most-searched-container {
+    border-top: 1px solid #f1f3f5;
+}
+.most-searched-list {
+    padding: 8px 0;
+}
+.type-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: 10px;
+    background: #f1f3f5;
+    color: #495057;
+    margin-left: 6px;
+}
+
 /* Animations */
 @keyframes slideIn {
     from {
@@ -375,6 +307,7 @@
 {% endblock %}
 
 {% block extra_js %}
+{{ most_searched_payload|json_script:"mostSearchedData" }}
 <script>
 // Symbol Search and Selection Functionality
 class MainSymbolSearch {
@@ -387,14 +320,25 @@ class MainSymbolSearch {
         this.selectedSymbols = document.getElementById('selectedSymbols');
         this.symbolsInput = document.getElementById('symbolsInput');
         this.analyzeButton = document.getElementById('analyzeButton');
+        this.createPortfolioButton = document.getElementById('createPortfolioButton');
         this.buttonText = document.getElementById('buttonText');
         this.mainSearchForm = document.getElementById('mainSearchForm');
+        this.mostSearchedContainer = document.getElementById('mostSearchedContainer');
+        this.mostSearchedList = document.getElementById('mostSearchedList');
+        this.typeFilterButtons = document.getElementById('typeFilterButtons');
         
         this.selectedSymbolsList = new Set();
         this.searchTimeout = null;
         this.currentSearchQuery = '';
         this.currentFilter = 'all';
         this.allResults = [];
+        this.currentTypeFilter = 'all';
+        try {
+            const msData = document.getElementById('mostSearchedData');
+            this.mostSearched = msData ? JSON.parse(msData.textContent || '{}') : {};
+        } catch (e) {
+            this.mostSearched = {};
+        }
         
         this.init();
     }
@@ -416,7 +360,12 @@ class MainSymbolSearch {
         });
         
         this.searchInput.addEventListener('focus', () => {
-            if (this.allResults.length > 0) {
+            if (this.currentSearchQuery.length < 2) {
+                this.showPlaceholder();
+                this.renderMostSearched();
+                this.showResults();
+            } else if (this.allResults.length > 0) {
+                this.hideMostSearched();
                 this.showResults();
             }
         });
@@ -448,7 +397,84 @@ class MainSymbolSearch {
             }
         });
         
-        this.updateAnalyzeButton();
+        this.updateActionButtons();
+
+        // Create Portfolio click → equal weights submit
+        this.createPortfolioButton.addEventListener('click', () => {
+            this.handleCreatePortfolio();
+        });
+    }
+
+    // Most Searched rendering
+    renderMostSearched() {
+        if (!this.mostSearched || !this.mostSearched.all) {
+            this.hideMostSearched();
+            return;
+        }
+        this.createTypeFilters();
+        this.displayMostSearchedItems();
+        this.mostSearchedContainer.style.display = 'block';
+    }
+
+    hideMostSearched() {
+        if (this.mostSearchedContainer) {
+            this.mostSearchedContainer.style.display = 'none';
+        }
+    }
+
+    createTypeFilters() {
+        const types = [
+            { key: 'all', label: '{% trans "All" %}' },
+            { key: 'stocks', label: '{% trans "Stocks" %}' },
+            { key: 'etf', label: '{% trans "ETF" %}' },
+            { key: 'indexes', label: '{% trans "Indexes" %}' },
+            { key: 'crypto', label: '{% trans "Crypto" %}' },
+            { key: 'commodities', label: '{% trans "Commodities" %}' },
+            { key: 'forex', label: '{% trans "Forex" %}' },
+        ];
+        this.typeFilterButtons.innerHTML = '';
+        types.forEach(t => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'filter-btn' + (this.currentTypeFilter === t.key ? ' active' : '');
+            btn.textContent = t.label;
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.currentTypeFilter = t.key;
+                this.createTypeFilters();
+                this.displayMostSearchedItems();
+            });
+            this.typeFilterButtons.appendChild(btn);
+        });
+    }
+
+    displayMostSearchedItems() {
+        const mapKey = (k) => {
+            if (k === 'stocks') return 'stocks';
+            return k;
+        };
+        const key = mapKey(this.currentTypeFilter);
+        const items = key === 'all' ? (this.mostSearched.all || []) : (this.mostSearched[key] || []);
+        this.mostSearchedList.innerHTML = '';
+        items.forEach(result => {
+            const item = document.createElement('div');
+            item.className = 'search-result-item';
+            item.dataset.symbol = result.symbol;
+            item.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="search-result-symbol">${result.symbol}<span class="type-badge">${(result.type || '').toString().toUpperCase()}</span></div>
+                        <div class="search-result-name">${result.name || ''}</div>
+                    </div>
+                    <div class="search-result-exchange">${result.exchange || ''}</div>
+                </div>
+            `;
+            item.addEventListener('click', () => {
+                this.selectSymbol(result.symbol);
+            });
+            this.mostSearchedList.appendChild(item);
+        });
     }
     
     handleSearch(query) {
@@ -469,6 +495,7 @@ class MainSymbolSearch {
         
         if (this.currentSearchQuery.length < 2) {
             this.showPlaceholder();
+            this.renderMostSearched();
             this.showResults();
             this.allResults = [];
             return;
@@ -505,10 +532,12 @@ class MainSymbolSearch {
             if (data.results && data.results.length > 0) {
                 this.allResults = data.results;
                 await this.displayResults(data.results);
+                this.hideMostSearched();
                 this.showResults();
             } else {
                 this.allResults = [];
                 this.displayNoResults();
+                this.hideMostSearched();
                 this.hideResults();
             }
         } catch (error) {
@@ -518,6 +547,7 @@ class MainSymbolSearch {
             console.error('Search error:', error);
             this.hideLoading();
             this.displayError();
+            this.hideMostSearched();
             this.hideResults();
         } finally {
             if (this.currentSearchRequest === abortController) {
@@ -658,7 +688,7 @@ class MainSymbolSearch {
             this.selectedSymbolsList.add(symbol);
             this.displaySelectedSymbol(symbol);
             this.updateSymbolsInput();
-            this.updateAnalyzeButton();
+            this.updateActionButtons();
         }
         
         this.searchInput.value = '';
@@ -689,14 +719,18 @@ class MainSymbolSearch {
         this.symbolsInput.value = Array.from(this.selectedSymbolsList).join(',');
     }
     
-    updateAnalyzeButton() {
+    updateActionButtons() {
         const count = this.selectedSymbolsList.size;
         if (count === 0) {
             this.buttonText.textContent = '{% trans "Analyze" %}';
+            this.createPortfolioButton.classList.add('d-none');
         } else if (count === 1) {
-            this.buttonText.textContent = '{% trans "Analyze" %} (1)';
+            const first = Array.from(this.selectedSymbolsList)[0];
+            this.buttonText.textContent = `{% trans "Analyze" %} ${first}`;
+            this.createPortfolioButton.classList.add('d-none');
         } else {
             this.buttonText.textContent = `{% trans "Analyze" %} (${count})`;
+            this.createPortfolioButton.classList.remove('d-none');
         }
     }
     
@@ -774,6 +808,50 @@ class MainSymbolSearch {
             </div>
         `;
     }
+
+    handleCreatePortfolio() {
+        const symbols = Array.from(this.selectedSymbolsList);
+        if (symbols.length < 2) return;
+        const w = 1 / symbols.length;
+        const weights = symbols.map(() => w.toFixed(6));
+
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/portfolio/';
+
+        const csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = 'csrfmiddlewaretoken';
+        csrfInput.value = (document.cookie.match(/csrftoken=([^;]+)/) || [null, ''])[1];
+        form.appendChild(csrfInput);
+
+        const symbolsInput = document.createElement('input');
+        symbolsInput.type = 'hidden';
+        symbolsInput.name = 'symbols';
+        symbolsInput.value = symbols.join(',');
+        form.appendChild(symbolsInput);
+
+        const weightsInput = document.createElement('input');
+        weightsInput.type = 'hidden';
+        weightsInput.name = 'weights';
+        weightsInput.value = weights.join(',');
+        form.appendChild(weightsInput);
+
+        const baseCurrencyInput = document.createElement('input');
+        baseCurrencyInput.type = 'hidden';
+        baseCurrencyInput.name = 'base_currency';
+        baseCurrencyInput.value = 'USD';
+        form.appendChild(baseCurrencyInput);
+
+        const includeDividendsInput = document.createElement('input');
+        includeDividendsInput.type = 'hidden';
+        includeDividendsInput.name = 'include_dividends';
+        includeDividendsInput.value = 'true';
+        form.appendChild(includeDividendsInput);
+
+        document.body.appendChild(form);
+        form.submit();
+    }
 }
 
 // Global function for removing symbols
@@ -786,7 +864,7 @@ function removeSymbol(symbol) {
     if (window.mainSymbolSearch) {
         window.mainSymbolSearch.selectedSymbolsList.delete(symbol);
         window.mainSymbolSearch.updateSymbolsInput();
-        window.mainSymbolSearch.updateAnalyzeButton();
+        window.mainSymbolSearch.updateActionButtons();
     }
 }
 

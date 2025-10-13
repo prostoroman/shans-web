@@ -185,13 +185,25 @@ python manage.py load_prices --symbols AAPL,MSFT --fundamentals
 
 ## Deployment
 
+### GitHub Actions
+
+Two workflows are provided in `.github/workflows/`:
+
+- `ci.yml`: runs tests on push/PR to `main`.
+- `deploy.yml`: triggers a Render deploy on push to `main`.
+
+Setup required:
+
+1. In your GitHub repo settings, add secret `RENDER_DEPLOY_HOOK` with the Render Deploy Hook URL from your Render service.
+2. Push to `main` to run CI and auto-trigger deploys. You can also run the Deploy workflow manually via "Run workflow".
+
 ### Render.com
 
 1. Connect your GitHub repository to Render
 2. Create a new Web Service
 3. Use the provided `render.yaml` configuration
 4. Set environment variables in Render dashboard
-5. Deploy!
+5. (Optional) Enable a Deploy Hook in Render settings and set the URL as `RENDER_DEPLOY_HOOK` secret in GitHub.
 
 ### Environment Variables for Production
 

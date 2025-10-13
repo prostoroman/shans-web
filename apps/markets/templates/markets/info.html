@@ -340,6 +340,49 @@
         </div>
         {% endif %}
         
+        <!-- Performance Metrics -->
+        {% if metrics and is_commodity %}
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-bar me-2"></i>{% trans "Performance Metrics" %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="text-primary">{{ metrics.cagr_percent|floatformat:2 }}%</h4>
+                                    <p class="text-muted">{% trans "CAGR" %}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="text-info">{{ metrics.volatility_percent|floatformat:2 }}%</h4>
+                                    <p class="text-muted">{% trans "Volatility" %}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="text-success">{{ metrics.sharpe_ratio|floatformat:2 }}</h4>
+                                    <p class="text-muted">{% trans "Sharpe Ratio" %}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h4 class="text-warning">{{ metrics.max_drawdown_percent|floatformat:2 }}%</h4>
+                                    <p class="text-muted">{% trans "Max Drawdown" %}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
         <!-- AI Summary Result Placeholder - Always render -->
         <div id="ai-summary-card-commodity" class="row" style="display:none;">
             <div class="col-12">
@@ -369,10 +412,10 @@
         // Commodity Price Chart Data
         const commodityPriceData = [
         {% for price in prices %}
-            {% if price.price %}
+            {% if price.close_price %}
             {
                 x: '{{ price.date|date:"Y-m-d" }}',
-                y: {{ price.price|floatformat:2 }}
+                y: {{ price.close_price|floatformat:2 }}
             }{% if not forloop.last %},{% endif %}
             {% endif %}
         {% endfor %}
@@ -387,7 +430,6 @@
             }
             
             console.log('Commodity chart data:', commodityPriceData);
-            console.log('Commodity chart labels:', commodityLabels);
             console.log('Commodity chart data length:', commodityPriceData.length);
             
             if (commodityPriceData.length === 0) {
@@ -1251,13 +1293,13 @@
                         <div class="row">
                             <div class="col-md-3">
                                 <div class="text-center">
-                                    <h4 class="text-primary">{{ metrics.cagr|mul:100|floatformat:2 }}%</h4>
+                                    <h4 class="text-primary">{{ metrics.cagr_percent|floatformat:2 }}%</h4>
                                     <p class="text-muted">{% trans "CAGR" %}</p>
                                 </div>
                             </div>
                             <div class="col-md-3">
                                 <div class="text-center">
-                                    <h4 class="text-info">{{ metrics.volatility|mul:100|floatformat:2 }}%</h4>
+                                    <h4 class="text-info">{{ metrics.volatility_percent|floatformat:2 }}%</h4>
                                     <p class="text-muted">{% trans "Volatility" %}</p>
                                 </div>
                             </div>
@@ -1269,7 +1311,7 @@
                             </div>
                             <div class="col-md-3">
                                 <div class="text-center">
-                                    <h4 class="text-warning">{{ metrics.max_drawdown|mul:100|floatformat:2 }}%</h4>
+                                    <h4 class="text-warning">{{ metrics.max_drawdown_percent|floatformat:2 }}%</h4>
                                     <p class="text-muted">{% trans "Max Drawdown" %}</p>
                                 </div>
                             </div>

@@ -28,11 +28,8 @@ def portfolio_form(request):
     """Portfolio analysis form."""
     if request.method == 'POST':
         return _process_portfolio_analysis(request)
-    
-    context = {
-        'title': _('Portfolio Analysis'),
-    }
-    return render(request, 'portfolio/form.html', context)
+    # Redirect to homepage; portfolio creation is initiated from homepage now
+    return redirect('core:home')
 
 
 def _process_portfolio_analysis(request):

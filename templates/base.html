@@ -43,7 +43,7 @@
 </head>
 <body>
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <nav class="navbar navbar-expand-lg navbar-light bg-white">
         <div class="container">
             <a class="navbar-brand" href="{% url 'core:home' %}">
                 <img src="{% static 'images/shans-logo.svg' %}" alt="shans.ai" height="32" class="me-2">shans.ai
@@ -55,15 +55,7 @@
             
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'core:home' %}">{% trans "Home" %}</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'compare' %}">{% trans "Compare" %}</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'portfolio:form' %}">{% trans "Portfolio" %}</a>
-                    </li>
+                    
                 </ul>
                 
                 <ul class="navbar-nav">
@@ -147,14 +139,10 @@
             <div class="row">
                 <div class="col-md-6">
                     <h5>{% trans "shans.ai" %}</h5>
-                    <p class="mb-0">{% trans "Professional financial analysis and portfolio optimization." %}</p>
+                    <p class="mb-0">{% trans "Invest Like Institutions — With AI on Your Side." %}</p>
                 </div>
                 <div class="col-md-6 text-md-end">
-                    <p class="mb-0">
-                        <a href="{% url 'core:robots_txt' %}" class="text-light me-3">{% trans "Robots.txt" %}</a>
-                        <a href="{% url 'core:sitemap_xml' %}" class="text-light me-3">{% trans "Sitemap" %}</a>
-                        <a href="{% url 'core:healthz' %}" class="text-light">{% trans "Health" %}</a>
-                    </p>
+                    <p class="mb-0"></p>
                 </div>
             </div>
         </div>

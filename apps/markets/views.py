@@ -613,6 +613,11 @@ def info(request, symbol=None):
                     years=years,
                     frequency=frequency
                 )
+                # Add percentage versions for template compatibility
+                if metrics:
+                    metrics['cagr_percent'] = metrics.get('cagr', 0) * 100
+                    metrics['volatility_percent'] = metrics.get('volatility', 0) * 100
+                    metrics['max_drawdown_percent'] = metrics.get('max_drawdown', 0) * 100
         except Exception as e:
             logger.warning(f"Failed to calculate metrics for {symbol}: {e}")
             metrics = {}
@@ -628,6 +633,7 @@ def info(request, symbol=None):
             'metrics': metrics,
             'period': period,
             'show_search_form': False,
+            'currency_symbol': '$' if asset.currency == 'USD' else asset.currency,
         }
     elif asset.asset_type == AssetType.CRYPTOCURRENCY:
         context = {
@@ -834,16 +840,8 @@ def compare(request, symbols=None):
         return render(request, 'markets/compare.html', context)
     
     if not symbols:
-        # Show form for symbol input
-        context = {
-            'title': _('Compare Assets'),
-            'symbols': [],
-            'base_currency': base_currency,
-            'include_dividends': include_dividends,
-            'period': period,
-            'normalize_mode': normalize_mode,
-        }
-        return render(request, 'markets/compare.html', context)
+        # Redirect to homepage: comparison is initiated from homepage form
+        return redirect('core:home')
     
     # Parse symbols
     symbol_list = [s.strip().upper() for s in symbols.split(',') if s.strip()]
@@ -857,16 +855,8 @@ def compare(request, symbols=None):
         base_currency = 'USD'
     
     if len(symbol_list) < 2:
-        context = {
-            'title': _('Compare Assets'),
-            'error': _('Please provide at least 2 symbols to compare'),
-            'symbols': symbol_list,
-            'base_currency': base_currency,
-            'include_dividends': include_dividends,
-            'period': period,
-            'normalize_mode': normalize_mode,
-        }
-        return render(request, 'markets/compare.html', context)
+        # Redirect to homepage if not enough symbols
+        return redirect('core:home')
     
     # Check user limits
     if request.user.is_authenticated:
